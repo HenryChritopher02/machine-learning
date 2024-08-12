@@ -5,3 +5,4 @@ scikit-learn
 rdkit
 astartes
 matplotlib
+joblib
