@@ -41,9 +41,7 @@ with st.expander('Data'):
   data_des = pd.DataFrame(mol_descriptors,columns=desc_names)
   data_des = data_des.apply(pd.to_numeric, errors='coerce')
   data_des.dropna(axis=1, inplace=True)
-  scaler = StandardScaler()
-  data_des_scaled = scaler.fit_transform(data_des)
-  data_des = pd.DataFrame(data_des_scaled, columns=data_des.columns)
+  columns = data_des.columns
   data_des = data_des.astype('float64')
   total = pd.concat([data['pIC50'], data_des], axis=1)
   total
@@ -103,9 +101,11 @@ with st.expander('Input SMILES'):
             st.write('Invalid SMILES:')
             st.write(invalid_smiles)
 
-        descriptors_data = rdkit_descriptors(standardized_smiles)
+        mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
+        data_new = pd.DataFrame(mol_descriptors,columns=desc_names)
+        data_new = data_new[columns]
         st.write('Calculated Descriptors:')
-        st.write(descriptors_data)
+        st.write(data_new)
 
     else:
         st.write('The CSV file does not contain a "SMILES" column.')
