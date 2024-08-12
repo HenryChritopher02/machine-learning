@@ -1,4 +1,4 @@
-pip install mordred
+%pip install mordred
 
 import streamlit as st
 import pandas as pd
