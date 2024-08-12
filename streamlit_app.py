@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import rdkit
-# from rdkit import Chem, RDLogger
-# from mordred import Calculator, descriptors
+from rdkit import Chem, RDLogger
+from mordred import Calculator, descriptors
 # from sklearn.preprocessing import StandardScaler
 
 # RDLogger.DisableLog('rdApp.*')
