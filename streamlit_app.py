@@ -2,9 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import rdkit
-from rdkit import Chem
-from rdkit.Chem.MolStandardize import rdMolStandardize
-from rdkit.Chem import Draw
 from rdkit import Chem, RDLogger
 from mordred import Calculator, descriptors
 from sklearn.preprocessing import StandardScaler
