@@ -55,8 +55,7 @@ with st.expander('Data'):
   st.write('**y**')
   y = total['pIC50'].values
   y
-
-  st.write('**TSNE**')
+  
   X_train, X_test, y_train, y_test = train_test_split(
     X,
     y,
@@ -64,3 +63,4 @@ with st.expander('Data'):
     random_state = 42,
     sampler = 'kennard_stone', #random, kennard_stone
   )
+  
