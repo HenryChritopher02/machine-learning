@@ -2,5 +2,4 @@ streamlit
 numpy
 pandas
 scikit-learn
-rdkit-pypi
-mordred
+rdkit
