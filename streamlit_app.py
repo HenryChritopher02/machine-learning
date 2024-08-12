@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 import rdkit
 from rdkit import Chem, RDLogger
+from rdkit.Chem.MolStandardize import rdMolStandardize
 from rdkit.ML.Descriptors import MoleculeDescriptors
 from rdkit.Chem import Descriptors, AllChem
 from sklearn.preprocessing import StandardScaler
-from astartes import train_test_split
 
 # RDLogger.DisableLog('rdApp.*')
 
@@ -56,5 +56,56 @@ with st.expander('Data'):
   y = total['pIC50']
   y
   
-# with st.expander('Input samples'):
-  
+with st.expander('Input SMILES'):
+  uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+  def standardize(smiles, invalid_smiles_list):
+    try:
+        mol = Chem.MolFromSmiles(smiles)  # Sanitize = True
+        if mol is None:
+            raise ValueError(f"Invalid SMILES string: {smiles}")
+        Chem.SanitizeMol(mol)
+        Chem.Kekulize(mol)
+        mol = Chem.RemoveHs(mol)
+        mol = rdMolStandardize.Uncharger().uncharge(mol)
+        mol = rdMolStandardize.Reionize(mol)
+        mol = rdMolStandardize.MetalDisconnector().Disconnect(mol)
+        mol = rdMolStandardize.FragmentParent(mol)
+        Chem.AssignStereochemistry(mol, force=True, cleanIt=True)
+        standardized_smiles = Chem.MolToSmiles(mol, isomericSmiles=False, canonical=True, kekuleSmiles=True)
+        return standardized_smiles
+    except Exception as e:
+        print(f"Error standardizing SMILES {smiles}: {e}")
+        invalid_smiles_list.append(smiles)
+        return None
+      
+  def standardize_smiles(smiles_series):
+    invalid_smiles_list = []
+    standardized_smiles = []
+
+    for smiles in smiles_series:
+        standardized_smile = standardize(smiles, invalid_smiles_list)
+        if standardized_smile:
+            standardized_smiles.append(standardized_smile)
+
+    return pd.Series(standardized_smiles), invalid_smiles_list
+
+  if uploaded_file is not None:
+    data = pd.read_csv(uploaded_file)
+    if 'SMILES' in data.columns:
+        st.write('Input Data:')
+        st.write(data)
+
+        standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
+        st.write('Standardized SMILES:')
+        st.write(standardized_smiles)
+
+        if invalid_smiles:
+            st.write('Invalid SMILES:')
+            st.write(invalid_smiles)
+
+        descriptors_data = rdkit_descriptors(standardized_smiles)
+        st.write('Calculated Descriptors:')
+        st.write(descriptors_data)
+
+    else:
+        st.write('The CSV file does not contain a "SMILES" column.')
