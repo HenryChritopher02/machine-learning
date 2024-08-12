@@ -4,7 +4,7 @@ import numpy as np
 import rdkit
 from rdkit import Chem, RDLogger
 from mordred import Calculator, descriptors
-# from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler
 
 # RDLogger.DisableLog('rdApp.*')
 
