@@ -2,5 +2,5 @@ streamlit
 numpy
 pandas
 scikit-learn
-mordred==1.2.0
 rdkit
+mordred==1.2.0
