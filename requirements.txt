@@ -1,6 +1,6 @@
 streamlit
 numpy
 pandas
-scikit-learn==1.2.1
+scikit-learn
 mordred
 rdkit
