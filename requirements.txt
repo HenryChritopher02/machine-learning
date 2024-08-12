@@ -2,5 +2,5 @@ streamlit
 numpy
 pandas
 scikit-learn
-rdkit
-mordred==1.1.1
+rdkit-pypi
+mordred
