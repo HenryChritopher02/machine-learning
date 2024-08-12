@@ -114,7 +114,7 @@ with st.expander('Input SMILES'):
 
 with st.expander('Prediction'):
   # Download the model file from GitHub
-  model_url = 'https://github.com/HenryChritopher02/bace1/blob/main/saved_model/rf_model.pkl'
+  model_url = 'https://raw.githubusercontent.com/HenryChritopher02/bace1/main/saved_model/rf_model.pkl'
   model_file = 'rf_model.pkl'
   response = requests.get(model_url)
   
