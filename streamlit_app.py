@@ -56,5 +56,5 @@ with st.expander('Data'):
   y = total['pIC50']
   y
   
-with st.expander('Input samples'):
+# with st.expander('Input samples'):
   
