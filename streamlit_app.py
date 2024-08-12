@@ -57,80 +57,93 @@ with st.expander('Data'):
   y
   
 with st.expander('Input SMILES'):
-  uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-  def standardize(smiles, invalid_smiles_list):
-    try:
-        mol = Chem.MolFromSmiles(smiles)  # Sanitize = True
-        if mol is None:
-            raise ValueError(f"Invalid SMILES string: {smiles}")
-        Chem.SanitizeMol(mol)
-        Chem.Kekulize(mol)
-        mol = Chem.RemoveHs(mol)
-        mol = rdMolStandardize.Uncharger().uncharge(mol)
-        mol = rdMolStandardize.Reionize(mol)
-        mol = rdMolStandardize.MetalDisconnector().Disconnect(mol)
-        mol = rdMolStandardize.FragmentParent(mol)
-        Chem.AssignStereochemistry(mol, force=True, cleanIt=True)
-        standardized_smiles = Chem.MolToSmiles(mol, isomericSmiles=False, canonical=True, kekuleSmiles=True)
-        return standardized_smiles
-    except Exception as e:
-        print(f"Error standardizing SMILES {smiles}: {e}")
-        invalid_smiles_list.append(smiles)
-        return None
-      
-  def standardize_smiles(smiles_series):
-    invalid_smiles_list = []
-    standardized_smiles = []
+    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
-    for smiles in smiles_series:
-        standardized_smile = standardize(smiles, invalid_smiles_list)
-        if standardized_smile:
-            standardized_smiles.append(standardized_smile)
+    def standardize(smiles, invalid_smiles_list):
+        try:
+            mol = Chem.MolFromSmiles(smiles)  # Sanitize = True
+            if mol is None:
+                raise ValueError(f"Invalid SMILES string: {smiles}")
+            Chem.SanitizeMol(mol)
+            Chem.Kekulize(mol)
+            mol = Chem.RemoveHs(mol)
+            mol = rdMolStandardize.Uncharger().uncharge(mol)
+            mol = rdMolStandardize.Reionize(mol)
+            mol = rdMolStandardize.MetalDisconnector().Disconnect(mol)
+            mol = rdMolStandardize.FragmentParent(mol)
+            Chem.AssignStereochemistry(mol, force=True, cleanIt=True)
+            standardized_smiles = Chem.MolToSmiles(mol, isomericSmiles=False, canonical=True, kekuleSmiles=True)
+            return standardized_smiles
+        except Exception as e:
+            print(f"Error standardizing SMILES {smiles}: {e}")
+            invalid_smiles_list.append(smiles)
+            return None
 
-    return pd.Series(standardized_smiles), invalid_smiles_list
+    @st.cache_data
+    def standardize_smiles(smiles_series):
+        invalid_smiles_list = []
+        standardized_smiles = []
 
-  data = pd.read_csv(uploaded_file)
-  if 'SMILES' in data.columns:
-      st.write('Input Data:')
-      st.write(data)
+        for smiles in smiles_series:
+            standardized_smile = standardize(smiles, invalid_smiles_list)
+            if standardized_smile:
+                standardized_smiles.append(standardized_smile)
 
-      standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
-      st.write('Standardized SMILES:')
-      st.write(standardized_smiles)
+        return pd.Series(standardized_smiles), invalid_smiles_list
 
-      if invalid_smiles:
-          st.write('Invalid SMILES:')
-          st.write(invalid_smiles)
+    if uploaded_file is not None:
+        data = pd.read_csv(uploaded_file)
+        if 'SMILES' in data.columns:
+            st.write('Input Data:')
+            st.write(data)
 
-      mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
-      data_new = pd.DataFrame(mol_descriptors,columns=desc_names)
-      data_new = data_new[columns]
-      data_new = data_new.apply(pd.to_numeric, errors='coerce')
-      st.write('Calculated Descriptors:')
-      st.write(data_new)
-      X_new = data_new.values
-  else:
-      st.write('The CSV file does not contain a "SMILES" column.')
+            standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
+            st.write('Standardized SMILES:')
+            st.write(standardized_smiles)
+
+            if invalid_smiles:
+                st.write('Invalid SMILES:')
+                st.write(invalid_smiles)
+
+            mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
+            data_new = pd.DataFrame(mol_descriptors, columns=desc_names)
+            data_new = data_new[columns]
+            data_new = data_new.apply(pd.to_numeric, errors='coerce')
+            st.write('Calculated Descriptors:')
+            st.write(data_new)
+            X_new = data_new.values
+        else:
+            st.write('The CSV file does not contain a "SMILES" column.')
 
 with st.expander('Prediction'):
-  # Download the model file from GitHub
-  model_url = 'https://raw.githubusercontent.com/HenryChritopher02/bace1/main/saved_model/rf_model.pkl'
-  model_file = 'rf_model.pkl'
-  response = requests.get(model_url)
-  
-  # Save the model file locally
-  with open(model_file, 'wb') as f:
-      f.write(response.content)
-  
-  # Load the model
-  loaded_model = joblib.load(model_file)
-  y_pred = loaded_model.predict(X_new)
-  
-  # Create a dataframe with standardized SMILES and predicted pIC50
-  prediction_df = pd.DataFrame({
-      'Standardized SMILES': standardized_smiles,
-      'Predicted pIC50': y_pred
-  })
+    # Download the model file from GitHub
+    model_url = 'https://raw.githubusercontent.com/HenryChritopher02/bace1/main/saved_model/rf_model.pkl'
+    model_file = 'rf_model.pkl'
 
-  st.write('Predictions:')
-  st.write(prediction_df)
+    # Check if the model file exists locally
+    if os.path.exists(model_file):
+        loaded_model = joblib.load(model_file)
+    else:
+        # Download the model file if it doesn't exist
+        response = requests.get(model_url)
+
+        # Save the model file locally
+        with open(model_file, 'wb') as f:
+            f.write(response.content)
+
+        # Load the model
+        loaded_model = joblib.load(model_file)
+
+    if 'X_new' in locals():
+        y_pred = loaded_model.predict(X_new)
+
+        # Create a dataframe with standardized SMILES and predicted pIC50
+        prediction_df = pd.DataFrame({
+            'Standardized SMILES': standardized_smiles,
+            'Predicted pIC50': y_pred
+        })
+
+        st.write('Predictions:')
+        st.write(prediction_df)
+    else:
+        st.write('No input data provided. Please upload a CSV file with a "SMILES" column.')
