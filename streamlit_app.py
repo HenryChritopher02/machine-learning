@@ -7,6 +7,7 @@ from mordred import Calculator, descriptors
 from sklearn.preprocessing import StandardScaler
 
 RDLogger.DisableLog('rdApp.*')
+
 st.title('🎈 Machine learning App')
 
 st.write('Hello world!')
