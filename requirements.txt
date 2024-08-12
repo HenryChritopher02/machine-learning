@@ -6,3 +6,4 @@ rdkit
 astartes
 matplotlib
 joblib
+requests
