@@ -8,6 +8,7 @@ from rdkit.ML.Descriptors import MoleculeDescriptors
 from rdkit.Chem import Descriptors, AllChem
 from sklearn.preprocessing import StandardScaler
 import joblib
+import requests
 
 # RDLogger.DisableLog('rdApp.*')
 
@@ -112,7 +113,17 @@ with st.expander('Input SMILES'):
         st.write('The CSV file does not contain a "SMILES" column.')
 
 with st.expander('Prediction'):
-  loaded_model = joblib.load('https://github.com/HenryChritopher02/bace1/blob/main/saved_model/rf_model.pkl')
+  # Download the model file from GitHub
+  model_url = 'https://github.com/HenryChritopher02/bace1/blob/main/saved_model/rf_model.pkl'
+  model_file = 'rf_model.pkl'
+  response = requests.get(model_url)
+  
+  # Save the model file locally
+  with open(model_file, 'wb') as f:
+      f.write(response.content)
+  
+  # Load the model
+  loaded_model = joblib.load(model_file)
   y_pred = loaded_model.predict(X_new)
   
   # Create a dataframe with standardized SMILES and predicted pIC50
@@ -123,4 +134,3 @@ with st.expander('Prediction'):
 
   st.write('Predictions:')
   st.write(prediction_df)
-  
