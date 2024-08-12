@@ -66,25 +66,3 @@ with st.expander('Data'):
     random_state = 42,
     sampler = 'kennard_stone', #random, kennard_stone
   )
-  # Initialize t-SNE with 2 components for 2D visualization
-  tsne = TSNE(n_components=2, random_state=42)
-  
-  # Fit and transform t-SNE on X_train and X_test separately
-  X_train_tsne = tsne.fit_transform(X_train)
-  X_test_tsne = tsne.fit_transform(X_test)
-  
-  # Plot t-SNE visualization
-  plt.figure(figsize=(12, 6))
-  plt.scatter(X_train_tsne[:, 0], X_train_tsne[:, 1], label='Training set')
-  plt.scatter(X_test_tsne[:, 0], X_test_tsne[:, 1], label='Test set')
-  # Set labels for the axes
-  plt.xlabel('t-SNE Component 1')
-  plt.ylabel('t-SNE Component 2')
-  
-  # Set a title for the plot
-  plt.title('2D t-SNE Plot')
-  
-  # Add a legend to distinguish between the two datasets
-  plt.legend()
-  
-  plt.show()
