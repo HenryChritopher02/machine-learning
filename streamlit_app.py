@@ -89,28 +89,28 @@ with st.expander('Input SMILES'):
 
     return pd.Series(standardized_smiles), invalid_smiles_list
 
-  if uploaded_file is not None:
-    data = pd.read_csv(uploaded_file)
-    if 'SMILES' in data.columns:
-        st.write('Input Data:')
-        st.write(data)
+  data = pd.read_csv(uploaded_file)
+  if 'SMILES' in data.columns:
+      st.write('Input Data:')
+      st.write(data)
 
-        standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
-        st.write('Standardized SMILES:')
-        st.write(standardized_smiles)
+      standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
+      st.write('Standardized SMILES:')
+      st.write(standardized_smiles)
 
-        if invalid_smiles:
-            st.write('Invalid SMILES:')
-            st.write(invalid_smiles)
+      if invalid_smiles:
+          st.write('Invalid SMILES:')
+          st.write(invalid_smiles)
 
-        mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
-        data_new = pd.DataFrame(mol_descriptors,columns=desc_names)
-        data_new = data_new[columns]
-        st.write('Calculated Descriptors:')
-        st.write(data_new)
-        X_new = data_new.values
-    else:
-        st.write('The CSV file does not contain a "SMILES" column.')
+      mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
+      data_new = pd.DataFrame(mol_descriptors,columns=desc_names)
+      data_new = data_new[columns]
+      data_new = data_new.apply(pd.to_numeric, errors='coerce')
+      st.write('Calculated Descriptors:')
+      st.write(data_new)
+      X_new = data_new.values
+  else:
+      st.write('The CSV file does not contain a "SMILES" column.')
 
 with st.expander('Prediction'):
   # Download the model file from GitHub
