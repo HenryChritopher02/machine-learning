@@ -49,18 +49,12 @@ with st.expander('Data'):
   total
 
   st.write('**X**')
-  X = total.drop('pIC50', axis=1).values
+  X = total.drop('pIC50', axis=1)
   X
   
   st.write('**y**')
-  y = total['pIC50'].values
+  y = total['pIC50']
   y
   
-  X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    train_size = 0.8,
-    random_state = 42,
-    sampler = 'kennard_stone', #random, kennard_stone
-  )
+with st.expander('Input samples'):
   
