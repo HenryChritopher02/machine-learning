@@ -1,6 +1,6 @@
-streamlit==1.18.1
-numpy==1.24.2
-pandas==1.5.3
+streamlit
+numpy
+pandas
 scikit-learn==1.2.1
-mordred==1.2.0
-rdkit==2022.09.3
+mordred
+rdkit
