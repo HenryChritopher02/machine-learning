@@ -7,8 +7,6 @@ from rdkit.ML.Descriptors import MoleculeDescriptors
 from rdkit.Chem import Descriptors, AllChem
 from sklearn.preprocessing import StandardScaler
 from astartes import train_test_split
-from sklearn.manifold import TSNE
-import matplotlib.pyplot as plt
 
 # RDLogger.DisableLog('rdApp.*')
 
