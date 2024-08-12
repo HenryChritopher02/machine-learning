@@ -6,6 +6,6 @@ st.title('🎈 Machine learning App')
 
 st.write('Hello world!')
 
-df = pd.read_csv(r'https://raw.githubusercontent.com/HenryChritopher02/bace1/main/data/bace1_standardized.csv',index=False)
+df = pd.read_csv(r'https://raw.githubusercontent.com/HenryChritopher02/bace1/main/data/bace1_standardized.csv')
 df = df.drop(df.columns[0], axis=1)
 df
