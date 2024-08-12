@@ -54,7 +54,7 @@ with st.expander('Data'):
   X = total.drop('pIC50', axis=1).values
   X
   
-  st.write('**y**)
+  st.write('**y**')
   y = total['pIC50'].values
   y
 
