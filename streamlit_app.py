@@ -16,7 +16,7 @@ st.write('Hello world!')
 
 with st.expand('Data'):
   st.write('**Standardized data**')
-  data = pd.read_csv(r'https://raw.githubusercontent.com/HenryChritopher02/bace1/main/data/bace1_standardized.csv')
+  data = pd.read_csv('https://raw.githubusercontent.com/HenryChritopher02/bace1/main/data/bace1_standardized.csv')
   data = data.drop(data.columns[0], axis=1)
   data
 
