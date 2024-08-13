@@ -56,19 +56,25 @@ with st.expander('Data'):
             return pd.Series(standardized_smiles), invalid_smiles_list
   
   def rdkit_descriptors(smiles):
-      mols = [Chem.MolFromSmiles(i) for i in smiles]
-      calc = MoleculeDescriptors.MolecularDescriptorCalculator([x[0]
-                                       for x in Descriptors._descList])
-      desc_names = calc.GetDescriptorNames()
+    # Check if smiles is a string or a list/series
+    if isinstance(smiles, str):
+        smiles = [smiles]  # Convert string to a list
+    elif isinstance(smiles, pd.Series):
+        smiles = smiles.tolist()  # Convert pandas Series to a list
     
-      mol_descriptors =[]
-      for mol in mols:
-        #Add hydrogens to molecules
-        mol=Chem.AddHs(mol)
-        #Calculate all 200 descriptors for each molecule
+    mols = [Chem.MolFromSmiles(i) for i in smiles]
+    calc = MoleculeDescriptors.MolecularDescriptorCalculator([x[0]
+                                                              for x in Descriptors._descList])
+    desc_names = calc.GetDescriptorNames()
+
+    mol_descriptors = []
+    for mol in mols:
+        # Add hydrogens to molecules
+        mol = Chem.AddHs(mol)
+        # Calculate all 200 descriptors for each molecule
         descriptors = calc.CalcDescriptors(mol)
         mol_descriptors.append(descriptors)
-      return mol_descriptors, desc_names
+    return mol_descriptors, desc_names
 
   mol_descriptors, desc_names = rdkit_descriptors(data['standardized_smiles'])
   data_des = pd.DataFrame(mol_descriptors,columns=desc_names)
