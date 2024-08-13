@@ -116,7 +116,7 @@ with st.expander('Input SMILES'):
         else:
             st.write('The CSV file does not contain a "SMILES" column.')
     else:
-        st.write("Please upload a CSV file with a "SMILES" column.")
+        st.write('Please upload a CSV file with a "SMILES" column.')
 
 with st.expander('Prediction'):
     # Download the model file from GitHub
