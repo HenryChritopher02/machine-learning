@@ -95,7 +95,8 @@ with st.expander('Data'):
   
 with st.expander('Input'):
     option = st.radio("Choose an option", ("Upload CSV file", "Input SMILES string"), index=None)
-
+    st.stop()  # Stop here and wait for user input
+    
     if option == "Upload CSV file":
         uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
@@ -150,7 +151,6 @@ with st.expander('Input'):
         X_new = data_new.values
     else:
         st.write('Please enter a SMILES string.')
-    st.stop()  # Stop here and wait for user input
 
 with st.expander('Prediction'):
     # Download the model file from GitHub
