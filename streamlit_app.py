@@ -172,7 +172,7 @@ with st.expander('Prediction'):
         # Load the model
         loaded_model = joblib.load(model_file)
 
-    if 'X_new' in locals():
+    if 'X_new' in locals() and 'standardized_smiles' in locals():
         y_pred = loaded_model.predict(X_new)
 
         try:
