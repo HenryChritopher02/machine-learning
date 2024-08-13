@@ -59,39 +59,39 @@ with st.expander('Data'):
 with st.expander('Input SMILES'):
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
-    def standardize(smiles, invalid_smiles_list):
-        try:
-            mol = Chem.MolFromSmiles(smiles)  # Sanitize = True
-            if mol is None:
-                raise ValueError(f"Invalid SMILES string: {smiles}")
-            Chem.SanitizeMol(mol)
-            Chem.Kekulize(mol)
-            mol = Chem.RemoveHs(mol)
-            mol = rdMolStandardize.Uncharger().uncharge(mol)
-            mol = rdMolStandardize.Reionize(mol)
-            mol = rdMolStandardize.MetalDisconnector().Disconnect(mol)
-            mol = rdMolStandardize.FragmentParent(mol)
-            Chem.AssignStereochemistry(mol, force=True, cleanIt=True)
-            standardized_smiles = Chem.MolToSmiles(mol, isomericSmiles=False, canonical=True, kekuleSmiles=True)
-            return standardized_smiles
-        except Exception as e:
-            print(f"Error standardizing SMILES {smiles}: {e}")
-            invalid_smiles_list.append(smiles)
-            return None
-
-    @st.cache_data
-    def standardize_smiles(smiles_series):
-        invalid_smiles_list = []
-        standardized_smiles = []
-
-        for smiles in smiles_series:
-            standardized_smile = standardize(smiles, invalid_smiles_list)
-            if standardized_smile:
-                standardized_smiles.append(standardized_smile)
-
-        return pd.Series(standardized_smiles), invalid_smiles_list
-
     if uploaded_file is not None:
+        def standardize(smiles, invalid_smiles_list):
+            try:
+                mol = Chem.MolFromSmiles(smiles)  # Sanitize = True
+                if mol is None:
+                    raise ValueError(f"Invalid SMILES string: {smiles}")
+                Chem.SanitizeMol(mol)
+                Chem.Kekulize(mol)
+                mol = Chem.RemoveHs(mol)
+                mol = rdMolStandardize.Uncharger().uncharge(mol)
+                mol = rdMolStandardize.Reionize(mol)
+                mol = rdMolStandardize.MetalDisconnector().Disconnect(mol)
+                mol = rdMolStandardize.FragmentParent(mol)
+                Chem.AssignStereochemistry(mol, force=True, cleanIt=True)
+                standardized_smiles = Chem.MolToSmiles(mol, isomericSmiles=False, canonical=True, kekuleSmiles=True)
+                return standardized_smiles
+            except Exception as e:
+                print(f"Error standardizing SMILES {smiles}: {e}")
+                invalid_smiles_list.append(smiles)
+                return None
+
+        @st.cache_data
+        def standardize_smiles(smiles_series):
+            invalid_smiles_list = []
+            standardized_smiles = []
+
+            for smiles in smiles_series:
+                standardized_smile = standardize(smiles, invalid_smiles_list)
+                if standardized_smile:
+                    standardized_smiles.append(standardized_smile)
+
+            return pd.Series(standardized_smiles), invalid_smiles_list
+
         data = pd.read_csv(uploaded_file)
         if 'SMILES' in data.columns:
             st.write('Input Data:')
@@ -114,6 +114,8 @@ with st.expander('Input SMILES'):
             X_new = data_new.values
         else:
             st.write('The CSV file does not contain a "SMILES" column.')
+    else:
+        st.write("Please upload a CSV file to continue.")
 
 with st.expander('Prediction'):
     # Download the model file from GitHub
