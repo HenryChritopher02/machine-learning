@@ -9,6 +9,7 @@ from rdkit.Chem import Descriptors, AllChem
 from sklearn.preprocessing import StandardScaler
 import joblib
 import requests
+import os
 
 # RDLogger.DisableLog('rdApp.*')
 
