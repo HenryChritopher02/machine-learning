@@ -98,7 +98,6 @@ with st.expander('Input'):
     if option == "Upload CSV file":
         uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
         if uploaded_file is not None:
-            @st.cache_data
             data = pd.read_csv(uploaded_file)
             if 'SMILES' in data.columns:
                 st.write('Input Data:')
