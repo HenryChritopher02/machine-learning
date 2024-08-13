@@ -99,33 +99,28 @@ with st.expander('Input'):
         uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
         if uploaded_file is not None:
             @st.cache_data
-            def process_csv(uploaded_file):
-                data = pd.read_csv(uploaded_file)
-                if 'SMILES' in data.columns:
-                    st.write('Input Data:')
-                    st.write(data)
+            data = pd.read_csv(uploaded_file)
+            if 'SMILES' in data.columns:
+                st.write('Input Data:')
+                st.write(data)
 
-                    standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
-                    st.write('Standardized SMILES:')
-                    st.write(standardized_smiles)
+                standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
+                st.write('Standardized SMILES:')
+                st.write(standardized_smiles)
 
-                    if invalid_smiles:
-                        st.write('Invalid SMILES string(s):')
-                        st.error(invalid_smiles)
+                if invalid_smiles:
+                    st.write('Invalid SMILES string(s):')
+                    st.error(invalid_smiles)
 
-                    mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
-                    data_new = pd.DataFrame(mol_descriptors, columns=desc_names)
-                    data_new = data_new[columns]
-                    data_new = data_new.apply(pd.to_numeric, errors='coerce')
-                    st.write('Calculated Descriptors:')
-                    st.write(data_new)
-                    return data_new.values
-                else:
-                    st.write('The CSV file does not contain a "SMILES" column.')
-                    return None
-
-            X_new = process_csv(uploaded_file)
-
+                mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
+                data_new = pd.DataFrame(mol_descriptors, columns=desc_names)
+                data_new = data_new[columns]
+                data_new = data_new.apply(pd.to_numeric, errors='coerce')
+                st.write('Calculated Descriptors:')
+                st.write(data_new)
+                X_new = data_new.values
+            else:
+                st.write('The CSV file does not contain a "SMILES" column.')
         else:
             st.write('Please upload a CSV file with a "SMILES" column.')
 
