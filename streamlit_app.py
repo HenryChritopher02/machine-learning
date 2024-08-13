@@ -95,11 +95,9 @@ with st.expander('Data'):
   
 with st.expander('Input'):
     option = st.radio("Choose an option", ("Upload CSV file", "Input SMILES string"), index=None)
-    st.stop()  # Stop here and wait for user input
-    
     if option == "Upload CSV file":
         uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-
+        st.stop()  # Stop here and wait for user input
         if uploaded_file is not None:
             @st.cache_data
             def process_csv(uploaded_file):
@@ -134,6 +132,7 @@ with st.expander('Input'):
 
     elif option == "Input SMILES string":
         smiles_input = st.text_input("Enter a SMILES string")
+        st.stop()  # Stop here and wait for user input
         data = pd.DataFrame({'SMILES': [smiles_input]})
         standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
         st.write('Standardized SMILES:')
