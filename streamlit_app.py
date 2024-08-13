@@ -112,7 +112,7 @@ with st.expander('Input'):
                     st.write(standardized_smiles)
 
                     if invalid_smiles:
-                        st.write('Invalid SMILES:')
+                        st.write('Invalid SMILES string(s):')
                         st.write(invalid_smiles)
 
                     mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
@@ -134,23 +134,20 @@ with st.expander('Input'):
     elif option == "Input SMILES string":
         smiles_input = st.text_input("Enter a SMILES string")
         data = pd.DataFrame({'SMILES': [smiles_input]})
-        if 'SMILES' in data.columns:
-            standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
-            st.write('Standardized SMILES:')
-            st.write(standardized_smiles)
+        standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
+        st.write('Standardized SMILES:')
+        st.write(standardized_smiles)
 
-            if invalid_smiles:
-                st.write('Invalid SMILES:')
-                st.write(invalid_smiles)
-            mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
-            data_new = pd.DataFrame(mol_descriptors, columns=desc_names, index=[0])
-            data_new = data_new[columns]
-            data_new = data_new.apply(pd.to_numeric, errors='coerce')
-            st.write('Calculated Descriptors:')
-            st.write(data_new)
-            X_new = data_new.values
-        else:
-            st.write('Invalid SMILES string.')
+        if invalid_smiles:
+            st.write('Invalid SMILES string:')
+            st.error('invalid_smiles)
+        mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
+        data_new = pd.DataFrame(mol_descriptors, columns=desc_names, index=[0])
+        data_new = data_new[columns]
+        data_new = data_new.apply(pd.to_numeric, errors='coerce')
+        st.write('Calculated Descriptors:')
+        st.write(data_new)
+        X_new = data_new.values
     else:
         st.write('Please enter a SMILES string.')
 
@@ -176,13 +173,16 @@ with st.expander('Prediction'):
     if 'X_new' in locals():
         y_pred = loaded_model.predict(X_new)
 
-        # Create a dataframe with standardized SMILES and predicted pIC50
-        prediction_df = pd.DataFrame({
-            'Standardized SMILES': standardized_smiles,
-            'Predicted pIC50': y_pred
-        })
+        try:
+            # Create a dataframe with standardized SMILES and predicted pIC50
+            prediction_df = pd.DataFrame({
+                'Standardized SMILES': standardized_smiles,
+                'Predicted pIC50': y_pred
+            })
 
-        st.write('Predictions:')
-        st.write(prediction_df)
+            st.write('Predictions:')
+            st.write(prediction_df)
+        except ValueError as e:
+            st.error(f"An error in input data: {e}")
     else:
-        st.write('No input data provided')
+        st.error('No input data provided')
