@@ -150,6 +150,7 @@ with st.expander('Input'):
         X_new = data_new.values
     else:
         st.write('Please enter a SMILES string.')
+    st.stop()  # Stop here and wait for user input
 
 with st.expander('Prediction'):
     # Download the model file from GitHub
@@ -183,6 +184,6 @@ with st.expander('Prediction'):
             st.write('Predictions:')
             st.write(prediction_df)
         except ValueError as e:
-            st.error(f"An error in input data: {e}")
+            st.error('An error in input data')
     else:
         st.error('No input data provided')
