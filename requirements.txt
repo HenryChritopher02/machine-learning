@@ -7,4 +7,3 @@ astartes
 matplotlib
 joblib
 requests
-os
