@@ -94,7 +94,7 @@ with st.expander('Data'):
   y
   
 with st.expander('Input'):
-    option = st.radio("Choose an option", ("Upload CSV file", "Input SMILES string"), index=None,)
+    option = st.radio("Choose an option", ("Upload CSV file", "Input SMILES string"), index=None)
 
     if option == "Upload CSV file":
         uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
