@@ -113,7 +113,7 @@ with st.expander('Input'):
 
                     if invalid_smiles:
                         st.write('Invalid SMILES string(s):')
-                        st.write(invalid_smiles)
+                        st.error(invalid_smiles)
 
                     mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
                     data_new = pd.DataFrame(mol_descriptors, columns=desc_names)
@@ -140,7 +140,7 @@ with st.expander('Input'):
 
         if invalid_smiles:
             st.write('Invalid SMILES string:')
-            st.error('invalid_smiles)
+            st.error(invalid_smiles)
         mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
         data_new = pd.DataFrame(mol_descriptors, columns=desc_names, index=[0])
         data_new = data_new[columns]
