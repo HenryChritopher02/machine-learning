@@ -127,22 +127,26 @@ with st.expander('Input'):
 
     elif option == "Input SMILES string":
         smiles_input = st.text_input("Enter a SMILES string")
+        data = pd.DataFrame({'SMILES': [smiles_input]})
+        if 'SMILES' in data.columns:
+            standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
+            st.write('Standardized SMILES:')
+            st.write(standardized_smiles)
 
-        if smiles_input:
-            standardized_smiles = standardize(smiles_input)
-            if standardized_smiles:
-                st.write('Standardized SMILES:', standardized_smiles)
-                mol_descriptors, desc_names = rdkit_descriptors([standardized_smiles])
-                data_new = pd.DataFrame(mol_descriptors, columns=desc_names, index=[0])
-                data_new = data_new[columns]
-                data_new = data_new.apply(pd.to_numeric, errors='coerce')
-                st.write('Calculated Descriptors:')
-                st.write(data_new)
-                X_new = data_new.values
-            else:
-                st.write('Invalid SMILES string.')
+            if invalid_smiles:
+                st.write('Invalid SMILES:')
+                st.write(invalid_smiles)
+            mol_descriptors, desc_names = rdkit_descriptors([standardized_smiles])
+            data_new = pd.DataFrame(mol_descriptors, columns=desc_names, index=[0])
+            data_new = data_new[columns]
+            data_new = data_new.apply(pd.to_numeric, errors='coerce')
+            st.write('Calculated Descriptors:')
+            st.write(data_new)
+            X_new = data_new.values
         else:
-            st.write('Please enter a SMILES string.')
+            st.write('Invalid SMILES string.')
+    else:
+        st.write('Please enter a SMILES string.')
 
 with st.expander('Prediction'):
     # Download the model file from GitHub
