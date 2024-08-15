@@ -160,7 +160,7 @@ with st.expander('Properties domain of molecules'):
             
             # Fit and transform t-SNE on X and X_new separately
             X_tsne = tsne.fit_transform(X.values)
-            X_new_tsne = tsne.fit_transform(X_new.values)
+            X_new_tsne = tsne.fit_transform(X_new)
             
             # Plot t-SNE visualization
             plt.figure(figsize=(12, 6))
