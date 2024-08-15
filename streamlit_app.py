@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import joblib
 import requests
 import os
+from io import BytesIO
 
 # RDLogger.DisableLog('rdApp.*')
 
@@ -176,7 +177,14 @@ with st.expander('Properties domain of molecules'):
             # Add a legend to distinguish between the two datasets
             plt.legend()
             
-            plt.show()
+            # Save the plot to a BytesIO buffer
+            buf = BytesIO()
+            plt.savefig(buf, format='png')
+            buf.seek(0)
+            plt.close()
+        
+            # Display the plot in Streamlit
+            st.image(buf, caption='t-SNE Visualization', use_column_width=True)
     else:
         st.error('No input data provided')     
 
