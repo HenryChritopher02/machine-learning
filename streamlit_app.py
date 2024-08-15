@@ -158,30 +158,25 @@ with st.expander('Input'):
 with st.expander('Properties domain of molecules'):
     if 'X_new' in locals() and 'X' in locals():
     # Initialize t-SNE with 2 components for 2D visualization
-            # Optionally, apply PCA to reduce dimensions before t-SNE
-            pca = PCA(n_components=50)  # Adjust n_components if needed
+            # Initialize PCA with 2 components for 2D visualization
+            pca = PCA(n_components=2)
+        
+            # Fit PCA on the training data (X) and transform it
             X_pca = pca.fit_transform(X.values)
+        
+            # Transform the new data (X_new) using the fitted PCA model
             X_new_pca = pca.transform(X_new)
-
-            # Initialize t-SNE with 2 components for 2D visualization
-            tsne = TSNE(n_components=2, random_state=42, perplexity=30)
-        
-            # Fit and transform t-SNE on PCA-reduced X
-            X_tsne = tsne.fit_transform(X_pca)
-        
-            # Transform PCA-reduced X_new using the same t-SNE model
-            X_new_tsne = tsne.fit_transform(X_new_pca)
             
             # Plot t-SNE visualization
             plt.figure(figsize=(12, 6))
-            plt.scatter(X_tsne[:, 0], X_tsne[:, 1], label='Our molecules')
-            plt.scatter(X_new_tsne[:, 0], X_new_tsne[:, 1], label="User's molecule(s)")
+            plt.scatter(X_pca[:, 0], X_pca[:, 1], label='Our molecules')
+            plt.scatter(X_new_pca[:, 0], X_new_pca[:, 1], label="User's molecule(s)")
             # Set labels for the axes
-            plt.xlabel('t-SNE Component 1')
-            plt.ylabel('t-SNE Component 2')
+            plt.xlabel('PCA 1')
+            plt.ylabel('PCA 2')
             
             # Set a title for the plot
-            plt.title('2D t-SNE Plot')
+            plt.title('2D PCA Plot')
             
             # Add a legend to distinguish between the two datasets
             plt.legend()
