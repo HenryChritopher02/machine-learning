@@ -98,12 +98,12 @@ with st.expander('Input'):
     if option == "Upload CSV file":
         uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
         if uploaded_file is not None:
-            data = pd.read_csv(uploaded_file)
-            if 'SMILES' in data.columns:
+            data_uploaded = pd.read_csv(uploaded_file)
+            if 'SMILES' in data_uploaded.columns:
                 st.write('Input Data:')
-                st.write(data)
+                st.write(data_uploaded)
 
-                standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
+                standardized_smiles, invalid_smiles = standardize_smiles(data_uploaded['SMILES'])
                 data_standardized = pd.DataFrame(standardized_smiles, columns=['Standardized SMILES'])
                 st.write('Standardized SMILES:')
                 st.write(data_standardized)
@@ -129,8 +129,8 @@ with st.expander('Input'):
     elif option == "Input SMILES string":
         smiles_input = st.text_input("Enter a SMILES string")
         if smiles_input:
-            data = pd.DataFrame({'SMILES': [smiles_input]})
-            standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
+            data_uploaded = pd.DataFrame({'SMILES': [smiles_input]})
+            standardized_smiles, invalid_smiles = standardize_smiles(data_uploaded['SMILES'])
             data_standardized = pd.DataFrame(standardized_smiles, columns=['Standardized SMILES'])
             st.write('Standardized SMILES:')
             st.write(data_standardized)
