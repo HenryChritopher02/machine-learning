@@ -16,15 +16,7 @@ import os
 st.title('🎈 Machine learning App')
 
 st.write('Hello world!')
-
-# with st.expander('Data'):
-  st.write('**Standardized data**')
-  data = pd.read_csv('https://raw.githubusercontent.com/HenryChritopher02/bace1/main/data/bace1_standardized.csv')
-  data = data.drop(data.columns[0], axis=1)
-  data
-
-  st.write('**Calculated descriptors data**')
-  def standardize(smiles, invalid_smiles_list):
+def standardize(smiles, invalid_smiles_list):
             try:
                 mol = Chem.MolFromSmiles(smiles)  # Sanitize = True
                 if mol is None:
@@ -76,6 +68,13 @@ st.write('Hello world!')
         mol_descriptors.append(descriptors)
     return mol_descriptors, desc_names
 
+# with st.expander('Data'):
+#   st.write('**Standardized data**')
+  data = pd.read_csv('https://raw.githubusercontent.com/HenryChritopher02/bace1/main/data/bace1_standardized.csv')
+  data = data.drop(data.columns[0], axis=1)
+  data
+
+  st.write('**Calculated descriptors data**')
   mol_descriptors, desc_names = rdkit_descriptors(data['standardized_smiles'])
   data_des = pd.DataFrame(mol_descriptors,columns=desc_names)
   data_des = data_des.apply(pd.to_numeric, errors='coerce')
@@ -85,11 +84,11 @@ st.write('Hello world!')
   total = pd.concat([data['pIC50'], data_des], axis=1)
   total
 
-  st.write('**X**')
+  # st.write('**X**')
   X = total.drop('pIC50', axis=1)
   X
   
-  st.write('**y**')
+  # st.write('**y**')
   y = total['pIC50']
   y
   
