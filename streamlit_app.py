@@ -131,7 +131,7 @@ with st.expander('Input'):
         if smiles_input:
             data = pd.DataFrame({'SMILES': [smiles_input]})
             standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
-            data_standardized = pd.DataFrame(standardized_smiles, columns='Standardized SMILES')
+            data_standardized = pd.DataFrame(standardized_smiles, columns=['Standardized SMILES'])
             st.write('Standardized SMILES:')
             st.write(data_standardized)
     
