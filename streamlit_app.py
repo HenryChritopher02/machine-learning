@@ -113,7 +113,7 @@ with st.expander('Input'):
                     st.error(invalid_smiles)
 
                 mol_descriptors, desc_names = rdkit_descriptors(standardized_smiles)
-                data_new = pd.DataFrame(mol_descriptors, columns=[desc_names])
+                data_new = pd.DataFrame(mol_descriptors, columns=[desc_names], index=[0]))
                 data_new = data_new[columns]
                 data_new = data_new.apply(pd.to_numeric, errors='coerce')
                 st.write('Calculated Descriptors:')
