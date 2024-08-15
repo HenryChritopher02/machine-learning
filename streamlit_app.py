@@ -158,8 +158,8 @@ with st.expander('Properties domain of molecules'):
             tsne = TSNE(n_components=2, random_state=42)
             
             # Fit and transform t-SNE on X and X_new separately
-            X_tsne = tsne.fit_transform(X)
-            X_new_tsne = tsne.fit_transform(X_new)
+            X_tsne = tsne.fit_transform(X.values)
+            X_new_tsne = tsne.fit_transform(X_new.values)
             
             # Plot t-SNE visualization
             plt.figure(figsize=(12, 6))
