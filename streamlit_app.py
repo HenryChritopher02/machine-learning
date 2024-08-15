@@ -17,7 +17,7 @@ st.title('🎈 Machine learning App')
 
 st.write('Hello world!')
 
-with st.expander('Data'):
+# with st.expander('Data'):
   st.write('**Standardized data**')
   data = pd.read_csv('https://raw.githubusercontent.com/HenryChritopher02/bace1/main/data/bace1_standardized.csv')
   data = data.drop(data.columns[0], axis=1)
