@@ -7,6 +7,7 @@ from rdkit.Chem.MolStandardize import rdMolStandardize
 from rdkit.ML.Descriptors import MoleculeDescriptors
 from rdkit.Chem import Descriptors, AllChem
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 import joblib
@@ -157,13 +158,19 @@ with st.expander('Input'):
 with st.expander('Properties domain of molecules'):
     if 'X_new' in locals() and 'X' in locals():
     # Initialize t-SNE with 2 components for 2D visualization
-            tsne = TSNE(n_components=2, random_state=42)
-            
-            # Fit t-SNE on the training data (X) only
-            X_tsne = tsne.fit_transform(X.values)
+            # Optionally, apply PCA to reduce dimensions before t-SNE
+            pca = PCA(n_components=50)  # Adjust n_components if needed
+            X_pca = pca.fit_transform(X.values)
+            X_new_pca = pca.transform(X_new)
+
+            # Initialize t-SNE with 2 components for 2D visualization
+            tsne = TSNE(n_components=2, random_state=42, perplexity=30)
         
-            # Transform the new data (X_new) using the fitted t-SNE model
-            X_new_tsne = tsne.transform(X_new)
+            # Fit and transform t-SNE on PCA-reduced X
+            X_tsne = tsne.fit_transform(X_pca)
+        
+            # Transform PCA-reduced X_new using the same t-SNE model
+            X_new_tsne = tsne.fit_transform(X_new_pca)
             
             # Plot t-SNE visualization
             plt.figure(figsize=(12, 6))
