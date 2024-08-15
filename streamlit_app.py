@@ -157,7 +157,7 @@ with st.expander('Input'):
 with st.expander('Properties domain of molecules'):
     if 'X_new' in locals() and 'X' in locals():
     # Initialize t-SNE with 2 components for 2D visualization
-            tsne = TSNE(n_components=2, random_state=42, perplexity=1)
+            tsne = TSNE(n_components=2, random_state=42)
             
             # Fit and transform t-SNE on X and X_new separately
             X_tsne = tsne.fit_transform(X.values)
