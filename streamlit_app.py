@@ -35,7 +35,6 @@ def standardize(smiles, invalid_smiles_list):
                 print(f"Error standardizing SMILES {smiles}: {e}")
                 invalid_smiles_list.append(smiles)
                 return None
-  
   def standardize_smiles(smiles_series):
             invalid_smiles_list = []
             standardized_smiles = []
@@ -46,7 +45,6 @@ def standardize(smiles, invalid_smiles_list):
                     standardized_smiles.append(standardized_smile)
 
             return pd.Series(standardized_smiles), invalid_smiles_list
-  
   def rdkit_descriptors(smiles):
     # Check if smiles is a string or a list/series
     if isinstance(smiles, str):
