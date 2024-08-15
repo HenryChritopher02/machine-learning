@@ -193,6 +193,9 @@ with st.expander('Properties domain of molecules'):
         st.error('No input data provided')     
 
 with st.expander('Prediction'):
+    # Input field for the file name base
+    input_name = st.text_input("Enter a name for the result file", "default_name")
+            
     # Download the model file from GitHub
     model_url = 'https://raw.githubusercontent.com/HenryChritopher02/bace1/main/saved_model/rf_model.pkl'
     model_file = 'rf_model.pkl'
@@ -223,6 +226,14 @@ with st.expander('Prediction'):
 
             st.write('Predictions:')
             st.write(prediction_df)
+
+            # Create the result file name
+            result_file_name = f"{input_name}_result.csv"
+            
+            # Save the DataFrame to a CSV file
+            prediction_df.to_csv(result_file_name, index=False)
+            
+            st.write(f"Results have been saved to `{result_file_name}`.")
         except ValueError as e:
             st.error('An error in input data')
     else:
