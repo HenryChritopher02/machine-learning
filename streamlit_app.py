@@ -7,6 +7,7 @@ from rdkit.Chem.MolStandardize import rdMolStandardize
 from rdkit.ML.Descriptors import MoleculeDescriptors
 from rdkit.Chem import Descriptors, AllChem
 from sklearn.preprocessing import StandardScaler
+from sklearn.manifold import TSNE
 import joblib
 import requests
 import os
@@ -131,8 +132,7 @@ with st.expander('Input'):
             standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
             data_standardized = pd.DataFrame(standardized_smiles, columns='Standardized SMILES')
             st.write('Standardized SMILES:')
-            # st.write(data_standardized)
-            st.dataframe(data_standardized.style.hide(axis="index"))
+            st.write(data_standardized)
     
             if invalid_smiles:
                 st.write('Invalid SMILES string:')
@@ -151,7 +151,29 @@ with st.expander('Input'):
     
     else:
         st.write('Please choose your input option.')
-
+with st.expander('Properties domain of molecules'):
+    # Initialize t-SNE with 2 components for 2D visualization
+            tsne = TSNE(n_components=2, random_state=42)
+            
+            # Fit and transform t-SNE on X and X_new separately
+            X_tsne = tsne.fit_transform(X)
+            X_new_tsne = tsne.fit_transform(X_new)
+            
+            # Plot t-SNE visualization
+            plt.figure(figsize=(12, 6))
+            plt.scatter(X_tsne[:, 0], X_tsne[:, 1], label='Our molecules')
+            plt.scatter(X_new_tsne[:, 0], X_new_tsne[:, 1], label='User's molecule(s)')
+            # Set labels for the axes
+            plt.xlabel('t-SNE Component 1')
+            plt.ylabel('t-SNE Component 2')
+            
+            # Set a title for the plot
+            plt.title('2D t-SNE Plot')
+            
+            # Add a legend to distinguish between the two datasets
+            plt.legend()
+            
+            plt.show()
 with st.expander('Prediction'):
     # Download the model file from GitHub
     model_url = 'https://raw.githubusercontent.com/HenryChritopher02/bace1/main/saved_model/rf_model.pkl'
