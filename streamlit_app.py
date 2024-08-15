@@ -152,6 +152,7 @@ with st.expander('Input'):
     
     else:
         st.write('Please choose your input option.')
+
 with st.expander('Properties domain of molecules'):
     # Initialize t-SNE with 2 components for 2D visualization
             tsne = TSNE(n_components=2, random_state=42)
@@ -175,6 +176,7 @@ with st.expander('Properties domain of molecules'):
             plt.legend()
             
             plt.show()
+
 with st.expander('Prediction'):
     # Download the model file from GitHub
     model_url = 'https://raw.githubusercontent.com/HenryChritopher02/bace1/main/saved_model/rf_model.pkl'
