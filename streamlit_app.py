@@ -162,7 +162,7 @@ with st.expander('Properties domain of molecules'):
             # Plot t-SNE visualization
             plt.figure(figsize=(12, 6))
             plt.scatter(X_tsne[:, 0], X_tsne[:, 1], label='Our molecules')
-            plt.scatter(X_new_tsne[:, 0], X_new_tsne[:, 1], label='User's molecule(s)')
+            plt.scatter(X_new_tsne[:, 0], X_new_tsne[:, 1], label="User's molecule(s)")
             # Set labels for the axes
             plt.xlabel('t-SNE Component 1')
             plt.ylabel('t-SNE Component 2')
