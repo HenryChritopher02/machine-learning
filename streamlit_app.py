@@ -35,6 +35,7 @@ def standardize(smiles, invalid_smiles_list):
                 print(f"Error standardizing SMILES {smiles}: {e}")
                 invalid_smiles_list.append(smiles)
                 return None
+                        
   def standardize_smiles(smiles_series):
             invalid_smiles_list = []
             standardized_smiles = []
