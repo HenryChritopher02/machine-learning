@@ -8,6 +8,7 @@ from rdkit.ML.Descriptors import MoleculeDescriptors
 from rdkit.Chem import Descriptors, AllChem
 from sklearn.preprocessing import StandardScaler
 from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
 import joblib
 import requests
 import os
