@@ -102,8 +102,9 @@ with st.expander('Input'):
                 st.write(data)
 
                 standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
+                data_standardized = pd.DataFrame(standardized_smiles, columns='Standardized SMILES')
                 st.write('Standardized SMILES:')
-                st.write(standardized_smiles)
+                st.write(data_standardized)
 
                 if invalid_smiles:
                     st.write('Invalid SMILES string(s):')
@@ -116,6 +117,8 @@ with st.expander('Input'):
                 st.write('Calculated Descriptors:')
                 st.write(data_new)
                 X_new = data_new.values
+                st.write('Descriptors used for prediction:')
+                st.write(desc_names)
             else:
                 st.write('The CSV file does not contain a "SMILES" column.')
         else:
@@ -126,8 +129,10 @@ with st.expander('Input'):
         if smiles_input:
             data = pd.DataFrame({'SMILES': [smiles_input]})
             standardized_smiles, invalid_smiles = standardize_smiles(data['SMILES'])
+            data_standardized = pd.DataFrame(standardized_smiles, columns='Standardized SMILES')
             st.write('Standardized SMILES:')
-            st.write(standardized_smiles)
+            # st.write(data_standardized)
+            st.dataframe(data_standardized.style.hide(axis="index"))
     
             if invalid_smiles:
                 st.write('Invalid SMILES string:')
@@ -139,6 +144,8 @@ with st.expander('Input'):
             st.write('Calculated Descriptors:')
             st.write(data_new)
             X_new = data_new.values
+            st.write('Descriptors used for prediction:')
+            st.write(desc_names)
         else:
             st.write('Please enter a SMILES string.')
     
