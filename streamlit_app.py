@@ -78,7 +78,7 @@ def predict_with_models(model_urls, data, train_files):
     result_df['Average_pIC50'] = result_df.iloc[:, 1:].mean(axis=1)
 
     return result_df
-
+used_columns = ['VE3sign_D/Dt', 'P_VSA_s_4', 'SM14_AEA(dm)', 'CATS2D_09_AA', 'F07[O-O]', 'ATSC7dv', 'ATSC7i',	'VE1_B(p)', 'SsssNH+', 'P_VSA_LogP_2', 'TSRW10', 'P_VSA_ppp_P',	'VR3_Dzs',	'SssCH2	B06[N-N]',	'AATS8i']
 with st.expander('Input'):
     option = st.radio("Choose an option", ("Upload CSV file", "Upload XLSX file"), index=None)
     if option == "Upload CSV file":
@@ -86,6 +86,8 @@ with st.expander('Input'):
         if uploaded_file is not None:
             data = pd.read_csv(uploaded_file)
             result = predict_with_models(model_urls, data, train_files)
+            st.write('Descriptors for prediction')
+            st.write(used_columns)
         else:
             st.error('Please upload a CSV file')
 
@@ -94,6 +96,8 @@ with st.expander('Input'):
         if uploaded_file is not None:
             data = pd.read_excel(uploaded_file)
             result = predict_with_models(model_urls, data, train_files)
+            st.write('Descriptors for prediction')
+            st.write(used_columns)
         else:
             st.error('Please upload a XLSX file')
     else:
