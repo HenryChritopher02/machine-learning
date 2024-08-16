@@ -85,7 +85,7 @@ with st.expander('Input'):
         uploaded_file = st.file_uploader("Choose a CSV file", type='csv')
         if uploaded_file is not None:
             data = pd.read_csv(uploaded_file)
-            result = predict_with_models(model_files, data, train_files)
+            result = predict_with_models(model_urls, data, train_files)
         else:
             st.error('Please upload a CSV file')
 
@@ -93,7 +93,7 @@ with st.expander('Input'):
         uploaded_file = st.file_uploader("Choose a XLSX file", type='xlsx')
         if uploaded_file is not None:
             data = pd.read_excel(uploaded_file)
-            result = predict_with_models(model_files, data, train_files)
+            result = predict_with_models(model_urls, data, train_files)
         else:
             st.error('Please upload a XLSX file')
     else:
