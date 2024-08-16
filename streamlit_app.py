@@ -15,6 +15,7 @@ import requests
 import os
 from io import BytesIO
 from sklearn.exceptions import InconsistentVersionWarning
+import warnings
 
 # Suppress the InconsistentVersionWarning
 warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
