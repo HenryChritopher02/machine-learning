@@ -79,7 +79,7 @@ def predict_with_models(model_urls, data, train_files):
 
     return result_df
 used_columns = ['VE3sign_D/Dt', 'P_VSA_s_4', 'SM14_AEA(dm)', 'CATS2D_09_AA', 'F07[O-O]', 'ATSC7dv', 'ATSC7i',	'VE1_B(p)', 'SsssNH+', 'P_VSA_LogP_2', 'TSRW10', 'P_VSA_ppp_P',	'VR3_Dzs',	'SssCH2	B06[N-N]',	'AATS8i']
-with st.expander('Input'):
+with st.expander('**Input**'):
     option = st.radio("Choose an option", ("Upload CSV file", "Upload XLSX file"), index=None)
     if option == "Upload CSV file":
         uploaded_file = st.file_uploader("Choose a CSV file", type='csv')
@@ -103,7 +103,7 @@ with st.expander('Input'):
     else:
         st.error('Please choose your option')
 
-with st.expander('Prediction results'):
+with st.expander('**Prediction results**'):
     if 'result' in locals():
         st.write(result)
     else:
