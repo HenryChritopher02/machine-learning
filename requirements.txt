@@ -6,4 +6,3 @@ rdkit
 matplotlib
 joblib
 requests
-warnings
