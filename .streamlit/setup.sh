@@ -1,3 +1,3 @@
 #!/bin/bash
-chmod +x ./vina/vina_1.2.5_linux_x86_64
+chmod 755 -R +x ./vina/vina_1.2.5_linux_x86_64
 ls -l ./vina/vina_1.2.5_linux_x86_64  # Debug: Check permissions
