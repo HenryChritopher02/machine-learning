@@ -6,4 +6,8 @@ rdkit
 matplotlib
 joblib
 requests
+swig
+boost-cpp
+sphinx
+sphinx_rtd_theme
 vina==1.2.5
