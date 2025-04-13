@@ -6,3 +6,4 @@ rdkit
 matplotlib
 joblib
 requests
+vina==1.2.5
