@@ -16,6 +16,7 @@ import os
 from io import BytesIO
 from sklearn.exceptions import InconsistentVersionWarning
 import warnings
+import subprocess
 
 # Suppress the InconsistentVersionWarning
 warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
