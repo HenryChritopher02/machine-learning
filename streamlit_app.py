@@ -21,7 +21,7 @@ import warnings
 warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
 # RDLogger.DisableLog('rdApp.*')
 
-st.title("AutoDock Vina Docking App"
+st.title("AutoDock Vina Docking App")
 
 receptor = st.file_uploader("Upload Receptor (PDBQT)")
 ligand = st.file_uploader("Upload Ligand (PDBQT)")
