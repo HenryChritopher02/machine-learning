@@ -1,2 +1,2 @@
 #!/bin/bash
-chmod -x ./vina/vina_1.2.5_linux_x86_64
+chmod +x /mount/src/machine-learning/vina/vina_1.2.5_linux_x86_64
