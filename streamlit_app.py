@@ -32,9 +32,9 @@ if receptor and ligand:
         f.write(receptor.getbuffer())
     with open("ligand.pdbqt", "wb") as f:
         f.write(ligand.getbuffer())
-
-  if st.button("Run Docking"):
-          cmd = [
+    
+    if st.button("Run Docking"):
+        cmd = [
               "vina",
               "--receptor", "receptor.pdbqt",
               "--ligand", "ligand.pdbqt",
@@ -44,7 +44,6 @@ if receptor and ligand:
               "--size_x", "20",
               "--size_y", "20",
               "--size_z", "20",
-          ]
-          result = subprocess.run(cmd, capture_output=True, text=True)
-          
-          st.code(result.stdout)  # Display results
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        st.code(result.stdout)  # Display results
