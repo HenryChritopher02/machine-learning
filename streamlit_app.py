@@ -3,7 +3,7 @@ import subprocess
 import os
 
 # Get absolute path to Vina binary
-VINA_PATH = os.path.abspath("vina/vina_1.2.5_linux_x86_64")
+VINA_PATH = os.path.abspath("./vina/vina_1.2.5_linux_x86_64")
 # Debug: Print permissions and path
 st.write("Vina binary path:", os.path.abspath("./vina/vina_1.2.5_linux_x86_64"))
 st.write("File exists:", os.path.exists("./vina/vina_1.2.5_linux_x86_64"))
