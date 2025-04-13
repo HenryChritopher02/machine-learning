@@ -4,7 +4,10 @@ import os
 
 # Get absolute path to Vina binary
 VINA_PATH = os.path.abspath("vina/vina_1.2.5_linux_x86_64")
-
+# Debug: Print permissions and path
+st.write("Vina binary path:", os.path.abspath("vina/vina_1.2.5_linux_x86_64"))
+st.write("File exists:", os.path.exists("vina/vina_1.2.5_linux_x86_64"))
+st.write("Is executable:", os.access("vina/vina_1.2.5_linux_x86_64", os.X_OK))
 st.title("AutoDock Vina Docking App")
 
 # Upload pre-prepared PDBQT files
