@@ -1,6 +1,5 @@
 streamlit
 meeko==0.6.1
-molscrub
 numpy
 pandas
 scikit-learn
@@ -8,3 +7,4 @@ rdkit
 matplotlib
 joblib
 requests
+molscrub
