@@ -21,7 +21,7 @@ CONFIG_SUBDIR_GH = "config/"           # Relative to BASE_GITHUB_URL_FOR_DATA
 # --- LOCAL Paths for Helper Scripts and Vina ---
 # Assuming your Streamlit app's root directory has a subfolder named 'ensemble-docking'
 APP_ROOT = Path(".") # Root of the Streamlit app
-ENSEMBLE_DOCKING_DIR_LOCAL = APP_ROOT / "ensemble-docking"
+ENSEMBLE_DOCKING_DIR_LOCAL = APP_ROOT / "ensemble_docking"
 
 # Paths to helper scripts within your local 'ensemble-docking' folder
 LIGAND_PREPROCESSING_SUBDIR_LOCAL = ENSEMBLE_DOCKING_DIR_LOCAL / "ligand_preprocessing"
