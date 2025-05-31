@@ -236,16 +236,39 @@ initialize_directories()
 # --- Sidebar for Setup & Global Parameters ---
 st.sidebar.header("🔧 Global Setup & Parameters")
 
-# Check for local helper scripts
+# Check for local helper scripts and make them executable
 st.sidebar.subheader("Helper Scripts Status")
+
+# Scrub.py
 scrub_py_ok = check_script_exists(SCRUB_PY_LOCAL_PATH, "scrub.py")
+if scrub_py_ok:
+    st.sidebar.info(f"Attempting to make {SCRUB_PY_LOCAL_PATH.name} executable...")
+    make_file_executable(str(SCRUB_PY_LOCAL_PATH))
+    if not os.access(str(SCRUB_PY_LOCAL_PATH.resolve()), os.X_OK) and os.name != 'nt': # os.X_OK might behave differently on Windows for .py
+         st.sidebar.caption(f"Note: {SCRUB_PY_LOCAL_PATH.name} execute bit check after chmod. Usually called via 'python ...'")
+
+
+# mk_prepare_ligand.py
 mk_prepare_ligand_py_ok = check_script_exists(MK_PREPARE_LIGAND_PY_LOCAL_PATH, "mk_prepare_ligand.py")
+if mk_prepare_ligand_py_ok:
+    st.sidebar.info(f"Attempting to make {MK_PREPARE_LIGAND_PY_LOCAL_PATH.name} executable...")
+    make_file_executable(str(MK_PREPARE_LIGAND_PY_LOCAL_PATH))
+    if not os.access(str(MK_PREPARE_LIGAND_PY_LOCAL_PATH.resolve()), os.X_OK) and os.name != 'nt':
+         st.sidebar.caption(f"Note: {MK_PREPARE_LIGAND_PY_LOCAL_PATH.name} execute bit check after chmod. Usually called via 'python ...'")
+
+
+# Vina_screening.pl
 vina_screening_pl_ok = check_script_exists(VINA_SCREENING_PL_LOCAL_PATH, "Vina_screening.pl")
+if vina_screening_pl_ok:
+    st.sidebar.info(f"Attempting to make {VINA_SCREENING_PL_LOCAL_PATH.name} executable...")
+    made_executable = make_file_executable(str(VINA_SCREENING_PL_LOCAL_PATH))
+    if made_executable and not os.access(str(VINA_SCREENING_PL_LOCAL_PATH.resolve()), os.X_OK) and os.name != 'nt':
+        st.sidebar.warning(f"{VINA_SCREENING_PL_LOCAL_PATH.name} could not be confirmed as executable after chmod attempt.")
+    elif made_executable and os.access(str(VINA_SCREENING_PL_LOCAL_PATH.resolve()), os.X_OK):
+        st.sidebar.success(f"{VINA_SCREENING_PL_LOCAL_PATH.name} is executable.")
 
-if vina_screening_pl_ok: # Make executable if it exists locally
-    make_file_executable(str(VINA_SCREENING_PL_LOCAL_PATH))
 
-# Check Vina binary
+# Check Vina binary (this was already good)
 vina_ready = check_vina_binary()
 
 # --- Receptor & Config Fetching (from remote GitHub or could be adapted for local) ---
