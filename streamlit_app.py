@@ -2,62 +2,64 @@ import streamlit as st
 import subprocess
 import os
 import stat
-import requests
+import requests # Still needed for PubChem and optionally remote receptors/configs
 import zipfile
-import tempfile
+# import tempfile # Might not be needed if LIGAND_UPLOAD_TEMP_DIR is used directly
 import shutil
-from urllib.parse import urljoin
+from urllib.parse import urljoin # Still needed for optional remote receptors/configs
 from pathlib import Path
 
 # --- Configuration ---
 APP_VERSION = "1.2.5" # For tracking changes
 
-# Base URL for fetching resources from the specified GitHub repository
-BASE_GITHUB_URL = "https://raw.githubusercontent.com/HenryChritopher02/bace1/main/ensemble-docking/"
+# GitHub URL for RECEPTORS and CONFIGS (if they are still remote)
+# If receptors/configs are also local, this can be removed or ignored for those parts.
+BASE_GITHUB_URL_FOR_DATA = "https://raw.githubusercontent.com/HenryChritopher02/bace1/main/ensemble-docking/"
+RECEPTOR_SUBDIR_GH = "ensemble_protein/" # Relative to BASE_GITHUB_URL_FOR_DATA
+CONFIG_SUBDIR_GH = "config/"           # Relative to BASE_GITHUB_URL_FOR_DATA
 
-# Relative paths to helper scripts and directories within the GitHub repo (from BASE_GITHUB_URL)
-SCRUB_PY_REL_PATH = "ligand_preprocessing/scrub.py"
-MK_PREPARE_LIGAND_PY_REL_PATH = "ligand_preprocessing/mk_prepare_ligand.py"
-VINA_SCREENING_PL_REL_PATH = "Vina_screening.pl"
-RECEPTOR_SUBDIR_GH = "ensemble_protein/"
-CONFIG_SUBDIR_GH = "config/"
+# --- LOCAL Paths for Helper Scripts and Vina ---
+# Assuming your Streamlit app's root directory has a subfolder named 'ensemble-docking'
+APP_ROOT = Path(".") # Root of the Streamlit app
+ENSEMBLE_DOCKING_DIR_LOCAL = APP_ROOT / "ensemble-docking"
 
-# Local Vina executable details
-VINA_DIR_LOCAL = Path("./vina")  # Assumes vina executable is in a 'vina' subfolder in your app's repo
+# Paths to helper scripts within your local 'ensemble-docking' folder
+LIGAND_PREPROCESSING_SUBDIR_LOCAL = ENSEMBLE_DOCKING_DIR_LOCAL / "ligand_preprocessing"
+SCRUB_PY_LOCAL_PATH = LIGAND_PREPROCESSING_SUBDIR_LOCAL / "scrub.py"
+MK_PREPARE_LIGAND_PY_LOCAL_PATH = LIGAND_PREPROCESSING_SUBDIR_LOCAL / "mk_prepare_ligand.py"
+VINA_SCREENING_PL_LOCAL_PATH = ENSEMBLE_DOCKING_DIR_LOCAL / "Vina_screening.pl"
+
+# Local Vina executable details (assuming 'vina' folder is at the app root)
+VINA_DIR_LOCAL = APP_ROOT / "vina"
 VINA_EXECUTABLE_NAME = "vina_1.2.5_linux_x86_64"
 VINA_PATH_LOCAL = VINA_DIR_LOCAL / VINA_EXECUTABLE_NAME
 
-# Local workspace directories (will be created)
-WORKSPACE_PARENT_DIR = Path("./autodock_workspace")
-HELPER_SCRIPTS_DIR_LOCAL = WORKSPACE_PARENT_DIR / "helper_scripts"
-RECEPTOR_DIR_LOCAL = WORKSPACE_PARENT_DIR / "receptors"
-CONFIG_DIR_LOCAL = WORKSPACE_PARENT_DIR / "configs"
+# Local workspace directories (will be created under the app root)
+WORKSPACE_PARENT_DIR = APP_ROOT / "autodock_workspace"
+# HELPER_SCRIPTS_DIR_LOCAL is removed as scripts are now directly referenced
+RECEPTOR_DIR_LOCAL = WORKSPACE_PARENT_DIR / "fetched_receptors" # For downloaded remote receptors
+CONFIG_DIR_LOCAL = WORKSPACE_PARENT_DIR / "fetched_configs"     # For downloaded remote configs
 LIGAND_PREP_DIR_LOCAL = WORKSPACE_PARENT_DIR / "prepared_ligands"
 LIGAND_UPLOAD_TEMP_DIR = WORKSPACE_PARENT_DIR / "uploaded_ligands_temp"
 ZIP_EXTRACT_DIR_LOCAL = WORKSPACE_PARENT_DIR / "zip_extracted_ligands"
-DOCKING_OUTPUT_DIR_LOCAL = Path("./autodock_outputs") # Separate from workspace for easier access to final results
+DOCKING_OUTPUT_DIR_LOCAL = APP_ROOT / "autodock_outputs"
 
 # --- Helper Functions ---
 
 def initialize_directories():
-    """Creates necessary local directories."""
+    """Creates necessary local workspace and output directories."""
     dirs_to_create = [
-        WORKSPACE_PARENT_DIR, HELPER_SCRIPTS_DIR_LOCAL, RECEPTOR_DIR_LOCAL,
-        CONFIG_DIR_LOCAL, LIGAND_PREP_DIR_LOCAL, LIGAND_UPLOAD_TEMP_DIR,
+        WORKSPACE_PARENT_DIR, RECEPTOR_DIR_LOCAL, CONFIG_DIR_LOCAL,
+        LIGAND_PREP_DIR_LOCAL, LIGAND_UPLOAD_TEMP_DIR,
         ZIP_EXTRACT_DIR_LOCAL, DOCKING_OUTPUT_DIR_LOCAL
     ]
     for dir_path in dirs_to_create:
         dir_path.mkdir(parents=True, exist_ok=True)
-    # Clean specific temp directories that might contain old data from previous runs
-    # shutil.rmtree(LIGAND_UPLOAD_TEMP_DIR, ignore_errors=True)
-    # LIGAND_UPLOAD_TEMP_DIR.mkdir(exist_ok=True)
-    # shutil.rmtree(ZIP_EXTRACT_DIR_LOCAL, ignore_errors=True)
-    # ZIP_EXTRACT_DIR_LOCAL.mkdir(exist_ok=True)
 
-
-def download_file_from_github(relative_path_on_github, local_filename, local_save_dir):
-    """Downloads a file from the configured GitHub repo to a local path."""
-    full_url = urljoin(BASE_GITHUB_URL, relative_path_on_github)
+def download_file_from_github(github_base_url, relative_path_on_github, local_filename, local_save_dir):
+    """Downloads a file from a specified GitHub repo to a local path."""
+    # This function is now primarily for receptors and configs if they are remote.
+    full_url = urljoin(github_base_url, relative_path_on_github)
     local_file_path = Path(local_save_dir) / local_filename
     try:
         with st.spinner(f"Downloading {local_filename} from {full_url}..."):
@@ -74,7 +76,7 @@ def download_file_from_github(relative_path_on_github, local_filename, local_sav
 
 def make_file_executable(filepath_str):
     """Makes a file executable."""
-    if not filepath_str or not os.path.exists(filepath_str):
+    if not filepath_str or not os.path.exists(filepath_str): # Check if file exists at the given path
         st.sidebar.warning(f"Cannot make executable: File not found at {filepath_str}")
         return False
     try:
@@ -84,6 +86,16 @@ def make_file_executable(filepath_str):
         return True
     except Exception as e:
         st.sidebar.error(f"Error making {Path(filepath_str).name} executable: {e}")
+        return False
+
+def check_script_exists(script_path: Path, script_name: str):
+    """Checks if a local script file exists and displays status."""
+    if script_path.exists() and script_path.is_file():
+        st.sidebar.success(f"Local script found: `{script_name}` (at `{script_path}`)")
+        return True
+    else:
+        st.sidebar.error(f"Local script NOT FOUND: `{script_name}` (expected at `{script_path}`)")
+        st.sidebar.error("Ensure the `ensemble-docking` folder and its contents are correctly placed in your app repository.")
         return False
 
 def check_vina_binary():
@@ -116,12 +128,11 @@ def check_vina_binary():
             st.sidebar.error("Failed to set execute permission (chmod call failed).")
         st.sidebar.markdown(
             "**Action Required:** If this fails, please set permissions manually in your Git repository: "
-            "`git add --chmod=+x vina/your_vina_executable_name`, commit, and push."
+            f"`git add --chmod=+x {VINA_DIR_LOCAL.name}/{VINA_EXECUTABLE_NAME}`, commit, and push."
         )
         return False
 
-# --- Ligand Preparation Backend Functions ---
-
+# --- Ligand Preparation Backend Functions --- (No changes here, they use passed script paths)
 def get_smiles_from_pubchem_inchikey(inchikey_str):
     """Fetches SMILES string from PubChem using InChIKey."""
     api_url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{inchikey_str}/property/CanonicalSMILES/JSON"
@@ -136,25 +147,21 @@ def get_smiles_from_pubchem_inchikey(inchikey_str):
         st.warning(f"Could not parse SMILES from PubChem response for {inchikey_str}: {e}")
     return None
 
-def run_ligand_prep_script(script_local_path, script_args, process_name, ligand_name_for_log):
+def run_ligand_prep_script(script_local_path_str, script_args, process_name, ligand_name_for_log):
     """Runs a Python ligand preparation script (scrub.py or mk_prepare_ligand.py)."""
-    if not script_local_path: # Check if the path string itself is None or empty
+    if not script_local_path_str: # Check if the path string itself is None or empty
         st.error(f"{process_name}: Script path is not defined.")
         return False
 
-    # Convert script_local_path to an absolute path string
-    # This is crucial when using the 'cwd' argument in subprocess.run
-    absolute_script_path = str(Path(script_local_path).resolve()) # <--- KEY CHANGE
+    absolute_script_path = str(Path(script_local_path_str).resolve())
 
-    # Now, check if the resolved absolute path actually exists before trying to run it
     if not os.path.exists(absolute_script_path):
         st.error(f"{process_name} script not found at resolved absolute path: {absolute_script_path}")
-        st.error(f"(Original relative path provided: {script_local_path})")
+        st.error(f"(Original path provided: {script_local_path_str})")
         return False
 
     command = ["python", absolute_script_path] + script_args
     
-    # Also ensure the cwd path is absolute and exists
     cwd_path_resolved = str(WORKSPACE_PARENT_DIR.resolve())
     if not os.path.exists(cwd_path_resolved):
         st.error(f"Working directory {cwd_path_resolved} for {process_name} does not exist.")
@@ -162,16 +169,15 @@ def run_ligand_prep_script(script_local_path, script_args, process_name, ligand_
 
     try:
         st.info(f"Running {process_name} for {ligand_name_for_log}...")
-        st.caption(f"Command: python {absolute_script_path} {' '.join(script_args)}")
+        st.caption(f"Command: python {absolute_script_path} {' '.join(map(str, script_args))}") # Ensure all args are strings for join
         st.caption(f"Working Directory: {cwd_path_resolved}")
         
         result = subprocess.run(command, capture_output=True, text=True, check=True, cwd=cwd_path_resolved)
         
-        # Using st.expander for outputs
         with st.expander(f"{process_name} STDOUT for {ligand_name_for_log}", expanded=False):
             st.text(result.stdout if result.stdout.strip() else "No standard output.")
         
-        if result.stderr.strip(): # Only show stderr expander if there's content
+        if result.stderr.strip(): 
              with st.expander(f"{process_name} STDERR for {ligand_name_for_log} (check for warnings/errors)", expanded=True):
                 st.text(result.stderr)
         return True
@@ -179,7 +185,6 @@ def run_ligand_prep_script(script_local_path, script_args, process_name, ligand_
         st.error(f"Error during {process_name} for {ligand_name_for_log}:")
         st.error(f"Command: `{' '.join(e.cmd)}`")
         st.error(f"Return code: {e.returncode}")
-        # Display stdout and stderr from the exception object
         with st.expander(f"{process_name} STDOUT (on error)", expanded=True):
             st.text(e.stdout if e.stdout.strip() else "No standard output.")
         with st.expander(f"{process_name} STDERR (on error)", expanded=True):
@@ -189,8 +194,8 @@ def run_ligand_prep_script(script_local_path, script_args, process_name, ligand_
         st.error(f"An unexpected error occurred running {process_name} for {ligand_name_for_log}: {e}")
         return False
 
-def convert_smiles_to_pdbqt(smiles_str, ligand_name_base, output_dir_path, ph_val, skip_taut, skip_acidbase, scrub_script_path, mk_prepare_script_path):
-    """Converts a single SMILES string to a PDBQT file."""
+def convert_smiles_to_pdbqt(smiles_str, ligand_name_base, output_dir_path, ph_val, skip_taut, skip_acidbase, local_scrub_script_path, local_mk_prepare_script_path):
+    """Converts a single SMILES string to a PDBQT file using local scripts."""
     output_dir_path.mkdir(parents=True, exist_ok=True)
     sdf_path = output_dir_path / f"{ligand_name_base}_scrubbed.sdf"
     pdbqt_path = output_dir_path / f"{ligand_name_base}.pdbqt"
@@ -199,25 +204,27 @@ def convert_smiles_to_pdbqt(smiles_str, ligand_name_base, output_dir_path, ph_va
     if skip_taut: scrub_options.append("--skip_tautomer")
     if skip_acidbase: scrub_options.append("--skip_acidbase")
 
+    # Ensure script paths are strings for run_ligand_prep_script
     scrub_args = [smiles_str, "-o", str(sdf_path)] + scrub_options
-    if not run_ligand_prep_script(scrub_script_path, scrub_args, "scrub.py", ligand_name_base):
+    if not run_ligand_prep_script(str(local_scrub_script_path), scrub_args, "scrub.py", ligand_name_base):
         return None
 
     mk_prepare_args = ["-i", str(sdf_path), "-o", str(pdbqt_path)]
-    if not run_ligand_prep_script(mk_prepare_script_path, mk_prepare_args, "mk_prepare_ligand.py", ligand_name_base):
+    if not run_ligand_prep_script(str(local_mk_prepare_script_path), mk_prepare_args, "mk_prepare_ligand.py", ligand_name_base):
         return None
 
     return str(pdbqt_path) if pdbqt_path.exists() else None
 
-def convert_ligand_file_to_pdbqt(input_ligand_file_path, ligand_name_base, output_dir_path, mk_prepare_script_path):
-    """Converts an input ligand file (SDF, MOL2, etc.) to PDBQT."""
+def convert_ligand_file_to_pdbqt(input_ligand_file_path, ligand_name_base, output_dir_path, local_mk_prepare_script_path):
+    """Converts an input ligand file to PDBQT using local mk_prepare_ligand.py."""
     output_dir_path.mkdir(parents=True, exist_ok=True)
     pdbqt_path = output_dir_path / f"{ligand_name_base}.pdbqt"
+    
+    # Ensure script path is a string
     mk_prepare_args = ["-i", str(input_ligand_file_path), "-o", str(pdbqt_path)]
-    if not run_ligand_prep_script(mk_prepare_script_path, mk_prepare_args, "mk_prepare_ligand.py", ligand_name_base):
+    if not run_ligand_prep_script(str(local_mk_prepare_script_path), mk_prepare_args, "mk_prepare_ligand.py", ligand_name_base):
         return None
     return str(pdbqt_path) if pdbqt_path.exists() else None
-
 
 # --- Main Application ---
 st.set_page_config(page_title="Ensemble AutoDock Vina", layout="wide")
@@ -227,68 +234,82 @@ st.title(f"🧬 Ensemble AutoDock Vina Docking App (v{APP_VERSION})")
 initialize_directories()
 
 # --- Sidebar for Setup & Global Parameters ---
-st.sidebar.header("Global Setup & Parameters")
+st.sidebar.header("🔧 Global Setup & Parameters")
 
-# Download helper scripts
-scrub_py_local = download_file_from_github(SCRUB_PY_REL_PATH, "scrub.py", HELPER_SCRIPTS_DIR_LOCAL)
-mk_prepare_ligand_py_local = download_file_from_github(MK_PREPARE_LIGAND_PY_REL_PATH, "mk_prepare_ligand.py", HELPER_SCRIPTS_DIR_LOCAL)
-vina_screening_pl_local = download_file_from_github(VINA_SCREENING_PL_REL_PATH, "Vina_screening.pl", HELPER_SCRIPTS_DIR_LOCAL)
+# Check for local helper scripts
+st.sidebar.subheader("Helper Scripts Status")
+scrub_py_ok = check_script_exists(SCRUB_PY_LOCAL_PATH, "scrub.py")
+mk_prepare_ligand_py_ok = check_script_exists(MK_PREPARE_LIGAND_PY_LOCAL_PATH, "mk_prepare_ligand.py")
+vina_screening_pl_ok = check_script_exists(VINA_SCREENING_PL_LOCAL_PATH, "Vina_screening.pl")
 
-if vina_screening_pl_local:
-    make_file_executable(vina_screening_pl_local)
+if vina_screening_pl_ok: # Make executable if it exists locally
+    make_file_executable(str(VINA_SCREENING_PL_LOCAL_PATH))
 
 # Check Vina binary
 vina_ready = check_vina_binary()
 
-# Fetch Receptors
-st.sidebar.subheader("Receptor Setup")
+# --- Receptor & Config Fetching (from remote GitHub or could be adapted for local) ---
+# IF RECEPTORS ARE LOCAL (e.g., in APP_ROOT / "ensemble-docking" / "ensemble_protein"):
+# You would replace the download logic with os.listdir() and Path objects.
+# Example for local receptors:
+# LOCAL_RECEPTOR_DIR = ENSEMBLE_DOCKING_DIR_LOCAL / RECEPTOR_SUBDIR_GH
+# if LOCAL_RECEPTOR_DIR.exists():
+#     st.session_state.fetched_receptor_paths = [str(p) for p in LOCAL_RECEPTOR_DIR.glob("*.pdbqt")]
+# else:
+#     st.sidebar.error(f"Local receptor directory not found: {LOCAL_RECEPTOR_DIR}")
+
+st.sidebar.subheader("Receptor Data Source")
+# receptor_source = st.sidebar.radio("Receptor source:", ("Remote GitHub", "Local (Not Yet Implemented)"))
+# For now, sticking to remote as per original complex script.
+# To implement local, you'd read from ENSEMBLE_DOCKING_DIR_LOCAL / RECEPTOR_SUBDIR_GH
+
 receptor_file_names_input = st.sidebar.text_area(
-    f"Receptor PDBQT filenames (one per line, from .../ensemble-docking/{RECEPTOR_SUBDIR_GH})",
-    help="Enter the exact filenames of your receptor PDBQT files located in the GitHub repository."
-    # Example: "proteinA.pdbqt\nproteinB.pdbqt"
+    f"Receptor PDBQT filenames (one per line, from remote .../ensemble-docking/{RECEPTOR_SUBDIR_GH})",
+    help="Enter exact filenames of receptor PDBQT files from the GitHub repository."
 )
-fetched_receptor_paths = []
-if receptor_file_names_input.strip() and st.sidebar.button("Fetch Receptors", key="fetch_receptors"):
+if receptor_file_names_input.strip() and st.sidebar.button("Fetch Remote Receptors", key="fetch_receptors"):
     receptor_names = [name.strip() for name in receptor_file_names_input.splitlines() if name.strip()]
+    fetched_receptor_paths_temp = []
     with st.spinner("Fetching receptor files..."):
         for r_name in receptor_names:
-            path = download_file_from_github(RECEPTOR_SUBDIR_GH + r_name, r_name, RECEPTOR_DIR_LOCAL)
-            if path: fetched_receptor_paths.append(path)
-    if fetched_receptor_paths:
-        st.sidebar.success(f"Successfully fetched {len(fetched_receptor_paths)} receptors.")
-        st.session_state.fetched_receptor_paths = fetched_receptor_paths # Store in session state
+            path = download_file_from_github(BASE_GITHUB_URL_FOR_DATA, RECEPTOR_SUBDIR_GH + r_name, r_name, RECEPTOR_DIR_LOCAL)
+            if path: fetched_receptor_paths_temp.append(path)
+    if fetched_receptor_paths_temp:
+        st.sidebar.success(f"Successfully fetched {len(fetched_receptor_paths_temp)} remote receptors.")
+        st.session_state.fetched_receptor_paths = fetched_receptor_paths_temp
     else:
-        st.sidebar.error("No receptors fetched. Check filenames or GitHub path.")
+        st.sidebar.error("No remote receptors fetched. Check filenames or GitHub path.")
 
 if 'fetched_receptor_paths' in st.session_state and st.session_state.fetched_receptor_paths:
     st.sidebar.markdown(f"**{len(st.session_state.fetched_receptor_paths)} Receptors Ready:**")
     for p in st.session_state.fetched_receptor_paths:
         st.sidebar.caption(f"- {Path(p).name}")
 
-# Fetch Configs
-st.sidebar.subheader("Vina Config File Setup")
+
+st.sidebar.subheader("Vina Config File Data Source")
+# Similar logic for configs - current is remote. Could be adapted for local.
 config_file_names_input = st.sidebar.text_area(
-    f"Vina config filenames (one per line, from .../ensemble-docking/{CONFIG_SUBDIR_GH})",
-    help="Enter exact filenames of Vina config TXT files. These define search space, etc."
-    # Example: "config_proteinA.txt\nconfig_general.txt"
+    f"Vina config filenames (one per line, from remote .../ensemble-docking/{CONFIG_SUBDIR_GH})",
+    help="Enter exact filenames of Vina config TXT files from the GitHub repository."
 )
-fetched_config_paths = []
-if config_file_names_input.strip() and st.sidebar.button("Fetch Config Files", key="fetch_configs"):
+if config_file_names_input.strip() and st.sidebar.button("Fetch Remote Config Files", key="fetch_configs"):
     config_names = [name.strip() for name in config_file_names_input.splitlines() if name.strip()]
-    with st.spinner("Fetching config files..."):
+    fetched_config_paths_temp = []
+    with st.spinner("Fetching remote config files..."):
         for c_name in config_names:
-            path = download_file_from_github(CONFIG_SUBDIR_GH + c_name, c_name, CONFIG_DIR_LOCAL)
-            if path: fetched_config_paths.append(path)
-    if fetched_config_paths:
-        st.sidebar.success(f"Successfully fetched {len(fetched_config_paths)} config files.")
-        st.session_state.fetched_config_paths = fetched_config_paths # Store in session state
+            path = download_file_from_github(BASE_GITHUB_URL_FOR_DATA, CONFIG_SUBDIR_GH + c_name, c_name, CONFIG_DIR_LOCAL)
+            if path: fetched_config_paths_temp.append(path)
+    if fetched_config_paths_temp:
+        st.sidebar.success(f"Successfully fetched {len(fetched_config_paths_temp)} remote config files.")
+        st.session_state.fetched_config_paths = fetched_config_paths_temp
     else:
-        st.sidebar.error("No config files fetched. Check filenames or GitHub path.")
+        st.sidebar.error("No remote config files fetched. Check filenames or GitHub path.")
 
 if 'fetched_config_paths' in st.session_state and st.session_state.fetched_config_paths:
     st.sidebar.markdown(f"**{len(st.session_state.fetched_config_paths)} Configs Ready:**")
     for p in st.session_state.fetched_config_paths:
         st.sidebar.caption(f"- {Path(p).name}")
+
 
 # --- Ligand Input Section ---
 st.header("🔬 Ligand Input & Preparation")
@@ -298,9 +319,11 @@ ligand_input_method = st.radio(
     key="ligand_method_radio"
 )
 
-prepared_ligand_pdbqt_paths = [] # This will hold paths to PDBQT files ready for docking
+# This list will hold paths to PDBQT files ready for docking
+# Initialize from session state if available to persist across simple reruns
+prepared_ligand_pdbqt_paths = st.session_state.get('prepared_ligand_pdbqt_paths', [])
 
-# Common SMILES preparation parameters
+
 if ligand_input_method in ["SMILES String", "SMILES File (.txt)"]:
     with st.expander("SMILES Protonation Options", expanded=True):
         col_ph, col_taut, col_ab = st.columns(3)
@@ -308,13 +331,13 @@ if ligand_input_method in ["SMILES String", "SMILES File (.txt)"]:
         g_skip_tautomer = col_taut.checkbox("Skip tautomer enumeration", key="global_skip_taut")
         g_skip_acidbase = col_ab.checkbox("Skip acid-base (protomer) enumeration", key="global_skip_ab")
 
-
 if ligand_input_method == "SMILES String":
     inchikey_or_smiles_val = st.text_input("Enter InChIKey or SMILES string:", key="smiles_input_text")
     use_inchikey_lookup = st.checkbox("Input is InChIKey (lookup SMILES on PubChem)", value=False, key="use_inchikey_cb")
     single_ligand_name = st.text_input("Ligand Name (for output files)", value="ligand_from_smiles", key="single_lig_name")
 
     if st.button("Prepare Ligand from SMILES", key="prep_single_smiles_btn"):
+        prepared_ligand_pdbqt_paths = [] # Reset for this action
         if inchikey_or_smiles_val and single_ligand_name:
             actual_smiles = ""
             if use_inchikey_lookup:
@@ -325,82 +348,81 @@ if ligand_input_method == "SMILES String":
             else:
                 actual_smiles = inchikey_or_smiles_val
 
-            if actual_smiles and scrub_py_local and mk_prepare_ligand_py_local:
-                pdbqt_p = convert_smiles_to_pdbqt(actual_smiles, single_ligand_name, LIGAND_PREP_DIR_LOCAL, g_ph_val, g_skip_tautomer, g_skip_acidbase, scrub_py_local, mk_prepare_ligand_py_local)
+            if actual_smiles and scrub_py_ok and mk_prepare_ligand_py_ok:
+                pdbqt_p = convert_smiles_to_pdbqt(actual_smiles, single_ligand_name, LIGAND_PREP_DIR_LOCAL, g_ph_val, g_skip_tautomer, g_skip_acidbase, SCRUB_PY_LOCAL_PATH, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
                 if pdbqt_p:
                     prepared_ligand_pdbqt_paths.append(pdbqt_p)
                     st.success(f"Ligand '{single_ligand_name}' prepared: `{pdbqt_p}`")
-            elif not (scrub_py_local and mk_prepare_ligand_py_local):
-                st.error("Ligand preparation scripts (scrub.py, mk_prepare_ligand.py) are missing.")
+            elif not (scrub_py_ok and mk_prepare_ligand_py_ok):
+                st.error("Local ligand preparation scripts (scrub.py, mk_prepare_ligand.py) are missing or not found.")
         else:
             st.warning("Please provide both SMILES/InChIKey and a ligand name.")
+        st.session_state.prepared_ligand_pdbqt_paths = prepared_ligand_pdbqt_paths
 
 
 elif ligand_input_method == "SMILES File (.txt)":
     uploaded_smiles_file = st.file_uploader("Upload a .txt file (one SMILES per line):", type="txt", key="smiles_file_uploader")
     if uploaded_smiles_file and st.button("Prepare Ligands from SMILES File", key="prep_smiles_file_btn"):
+        prepared_ligand_pdbqt_paths = [] # Reset
         smiles_list = [line.strip() for line in uploaded_smiles_file.read().decode().splitlines() if line.strip()]
         if not smiles_list:
             st.warning("No SMILES strings found in the uploaded file.")
-        elif not (scrub_py_local and mk_prepare_ligand_py_local):
-            st.error("Ligand preparation scripts (scrub.py, mk_prepare_ligand.py) are missing.")
+        elif not (scrub_py_ok and mk_prepare_ligand_py_ok):
+            st.error("Local ligand preparation scripts (scrub.py, mk_prepare_ligand.py) are missing or not found.")
         else:
             st.info(f"Found {len(smiles_list)} SMILES string(s). Preparing...")
             progress_bar_smiles = st.progress(0)
             for i, smiles_str in enumerate(smiles_list):
                 lig_name = f"ligand_file_{i+1}"
-                pdbqt_p = convert_smiles_to_pdbqt(smiles_str, lig_name, LIGAND_PREP_DIR_LOCAL, g_ph_val, g_skip_tautomer, g_skip_acidbase, scrub_py_local, mk_prepare_ligand_py_local)
+                pdbqt_p = convert_smiles_to_pdbqt(smiles_str, lig_name, LIGAND_PREP_DIR_LOCAL, g_ph_val, g_skip_tautomer, g_skip_acidbase, SCRUB_PY_LOCAL_PATH, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
                 if pdbqt_p: prepared_ligand_pdbqt_paths.append(pdbqt_p)
                 progress_bar_smiles.progress((i + 1) / len(smiles_list))
             st.success(f"Finished processing SMILES file. Prepared {len(prepared_ligand_pdbqt_paths)} PDBQT files.")
-
+        st.session_state.prepared_ligand_pdbqt_paths = prepared_ligand_pdbqt_paths
 
 elif ligand_input_method == "PDBQT File(s)":
     uploaded_pdbqt_files = st.file_uploader("Upload PDBQT ligand file(s):", type="pdbqt", accept_multiple_files=True, key="pdbqt_uploader")
     if uploaded_pdbqt_files:
+        prepared_ligand_pdbqt_paths = [] # Reset
         for up_file in uploaded_pdbqt_files:
-            # Save to prepared ligands directory to have a consistent location
             dest_path = LIGAND_PREP_DIR_LOCAL / up_file.name
             with open(dest_path, "wb") as f:
                 f.write(up_file.getbuffer())
             prepared_ligand_pdbqt_paths.append(str(dest_path))
         st.info(f"Using {len(prepared_ligand_pdbqt_paths)} uploaded PDBQT file(s).")
+        st.session_state.prepared_ligand_pdbqt_paths = prepared_ligand_pdbqt_paths
 
 
 elif ligand_input_method == "Other Ligand File(s) (e.g., SDF, MOL2)":
     uploaded_other_files = st.file_uploader("Upload other ligand format file(s) (e.g., SDF, MOL2):", accept_multiple_files=True, key="other_lig_uploader")
     if uploaded_other_files and st.button("Convert Uploaded Ligand File(s) to PDBQT", key="convert_other_btn"):
-        if not mk_prepare_ligand_py_local:
-            st.error("mk_prepare_ligand.py script is missing, cannot convert.")
+        prepared_ligand_pdbqt_paths = [] # Reset
+        if not mk_prepare_ligand_py_ok:
+            st.error("Local mk_prepare_ligand.py script is missing or not found, cannot convert.")
         else:
             st.info(f"Processing {len(uploaded_other_files)} uploaded file(s) for conversion...")
             progress_bar_other = st.progress(0)
             for i, up_file in enumerate(uploaded_other_files):
-                # Save to a temporary spot for conversion
                 temp_save_path = LIGAND_UPLOAD_TEMP_DIR / up_file.name
                 with open(temp_save_path, "wb") as f:
                     f.write(up_file.getbuffer())
-
                 lig_name_base = Path(up_file.name).stem
-                pdbqt_p = convert_ligand_file_to_pdbqt(temp_save_path, lig_name_base, LIGAND_PREP_DIR_LOCAL, mk_prepare_ligand_py_local)
+                pdbqt_p = convert_ligand_file_to_pdbqt(temp_save_path, lig_name_base, LIGAND_PREP_DIR_LOCAL, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
                 if pdbqt_p: prepared_ligand_pdbqt_paths.append(pdbqt_p)
                 progress_bar_other.progress((i + 1) / len(uploaded_other_files))
             st.success(f"Finished conversion. Prepared {len(prepared_ligand_pdbqt_paths)} PDBQT files.")
+        st.session_state.prepared_ligand_pdbqt_paths = prepared_ligand_pdbqt_paths
+
 
 elif ligand_input_method == "ZIP Archive of Ligands":
     uploaded_zip_file = st.file_uploader("Upload a ZIP archive containing ligand files:", type="zip", key="zip_uploader")
     if uploaded_zip_file and st.button("Process Ligands from ZIP Archive", key="process_zip_btn"):
-        if not mk_prepare_ligand_py_local: # Needed if non-PDBQT files are in ZIP
-             st.warning("mk_prepare_ligand.py script is missing. Non-PDBQT files in ZIP may not be converted.")
-
-        # Clean and recreate extraction directory
+        prepared_ligand_pdbqt_paths = [] # Reset
         shutil.rmtree(ZIP_EXTRACT_DIR_LOCAL, ignore_errors=True)
         ZIP_EXTRACT_DIR_LOCAL.mkdir(exist_ok=True)
-
         with zipfile.ZipFile(uploaded_zip_file, 'r') as zip_ref:
             zip_ref.extractall(ZIP_EXTRACT_DIR_LOCAL)
         st.info(f"Extracted ZIP archive to `{ZIP_EXTRACT_DIR_LOCAL}`.")
-
         files_in_zip = list(Path(p) for p in Path(ZIP_EXTRACT_DIR_LOCAL).rglob("*") if p.is_file())
         if not files_in_zip:
             st.warning("No files found in the extracted ZIP archive.")
@@ -410,67 +432,64 @@ elif ligand_input_method == "ZIP Archive of Ligands":
             for i, item_path in enumerate(files_in_zip):
                 lig_name_base = item_path.stem
                 if item_path.suffix.lower() == ".pdbqt":
-                    # Copy to prepared ligands dir
                     dest_path = LIGAND_PREP_DIR_LOCAL / item_path.name
                     shutil.copy(item_path, dest_path)
                     prepared_ligand_pdbqt_paths.append(str(dest_path))
-                elif mk_prepare_ligand_py_local: # Attempt conversion for other files
-                    pdbqt_p = convert_ligand_file_to_pdbqt(item_path, lig_name_base, LIGAND_PREP_DIR_LOCAL, mk_prepare_ligand_py_local)
+                elif mk_prepare_ligand_py_ok:
+                    pdbqt_p = convert_ligand_file_to_pdbqt(item_path, lig_name_base, LIGAND_PREP_DIR_LOCAL, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
                     if pdbqt_p: prepared_ligand_pdbqt_paths.append(pdbqt_p)
                 else:
-                    st.warning(f"Skipping conversion of {item_path.name} (mk_prepare_ligand.py missing or error).")
+                    st.warning(f"Skipping conversion of {item_path.name} (mk_prepare_ligand.py missing or not found).")
                 progress_bar_zip.progress((i + 1) / len(files_in_zip))
             st.success(f"Finished processing ZIP. Prepared {len(prepared_ligand_pdbqt_paths)} PDBQT files.")
+        st.session_state.prepared_ligand_pdbqt_paths = prepared_ligand_pdbqt_paths
 
-if prepared_ligand_pdbqt_paths:
-    st.success(f"**Total {len(prepared_ligand_pdbqt_paths)} ligand(s) ready for docking.**")
+# Display current list of prepared ligands
+current_prepared_ligands = st.session_state.get('prepared_ligand_pdbqt_paths', [])
+if current_prepared_ligands:
+    st.success(f"**Total {len(current_prepared_ligands)} ligand(s) ready for docking.**")
     with st.expander("View Ready Ligands"):
-        for p_path in prepared_ligand_pdbqt_paths:
-            st.caption(f"- `{Path(p_path).name}` (at `{p_path}`)")
-    # Store in session state if needed for persistence across reruns before docking
-    st.session_state.prepared_ligand_pdbqt_paths = prepared_ligand_pdbqt_paths
-
+        for p_path_str in current_prepared_ligands:
+            st.caption(f"- `{Path(p_path_str).name}` (at `{p_path_str}`)")
 
 # --- Docking Execution Section ---
 st.header("🚀 Docking Execution")
 
-# Retrieve from session state or use current if just prepared
-final_ligand_list_for_docking = st.session_state.get('prepared_ligand_pdbqt_paths', prepared_ligand_pdbqt_paths)
+final_ligand_list_for_docking = st.session_state.get('prepared_ligand_pdbqt_paths', [])
 current_receptors = st.session_state.get('fetched_receptor_paths', [])
 current_configs = st.session_state.get('fetched_config_paths', [])
 
 if not vina_ready:
     st.error("Vina executable is not properly set up. Cannot run docking.")
 elif not current_receptors:
-    st.warning("No receptors fetched/selected. Please fetch receptors from the sidebar.")
+    st.warning("No receptors available. Please fetch/select receptors from the sidebar.")
 elif not final_ligand_list_for_docking:
     st.warning("No ligands prepared or uploaded. Please prepare/upload ligands first.")
 elif not current_configs:
-    st.warning("No Vina configuration files fetched/selected. Please fetch config files from the sidebar.")
+    st.warning("No Vina configuration files available. Please fetch/select config files from the sidebar.")
 else:
     st.info(f"Ready to dock {len(final_ligand_list_for_docking)} ligand(s) against {len(current_receptors)} receptor(s) using {len(current_configs)} configuration(s).")
 
     use_vina_screening_perl = False
-    if len(final_ligand_list_for_docking) > 1 and vina_screening_pl_local and os.path.exists(vina_screening_pl_local):
+    if len(final_ligand_list_for_docking) > 1 and vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists():
         use_vina_screening_perl = st.checkbox(
-            "Use `Vina_screening.pl` for docking multiple ligands? (Recommended for many ligands; processes one receptor at a time)",
+            "Use local `Vina_screening.pl` for docking multiple ligands? (Recommended for many ligands; processes one receptor at a time)",
             value=True, key="use_perl_script_cb"
         )
 
     if st.button("Start Docking Run", key="start_docking_main_btn", type="primary"):
         st.markdown("---")
-        DOCKING_OUTPUT_DIR_LOCAL.mkdir(parents=True, exist_ok=True) # Ensure output dir exists
+        DOCKING_OUTPUT_DIR_LOCAL.mkdir(parents=True, exist_ok=True)
 
         if use_vina_screening_perl:
-            st.subheader("Docking via `Vina_screening.pl`")
-            if not (vina_screening_pl_local and os.path.exists(vina_screening_pl_local) and os.access(vina_screening_pl_local, os.X_OK)):
-                st.error("`Vina_screening.pl` script is not available or not executable.")
+            st.subheader("Docking via Local `Vina_screening.pl`")
+            if not (vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists() and os.access(VINA_SCREENING_PL_LOCAL_PATH, os.X_OK)):
+                st.error("Local `Vina_screening.pl` script is not available or not executable.")
             else:
-                # Create ligand_list.txt for the Perl script
                 ligand_list_file_for_perl = WORKSPACE_PARENT_DIR / "ligands_for_perl.txt"
                 with open(ligand_list_file_for_perl, "w") as f:
                     for p_path_str in final_ligand_list_for_docking:
-                        f.write(str(Path(p_path_str).resolve()) + "\n") # Absolute paths
+                        f.write(str(Path(p_path_str).resolve()) + "\n")
                 st.info(f"Created ligand list for Perl script: `{ligand_list_file_for_perl}`")
 
                 overall_docking_progress = st.progress(0)
@@ -479,63 +498,43 @@ else:
                     protein_base = receptor_file.stem
                     st.markdown(f"#### Processing Receptor: `{receptor_file.name}`")
 
-                    # Vina_screening.pl typically expects receptor and config in CWD or specific relative paths.
-                    # It also usually expects a config file named like the protein (e.g., protein_base.txt).
-                    # We will run it from WORKSPACE_PARENT_DIR and copy necessary files there temporarily.
-
-                    # Copy receptor to CWD for the script
                     temp_receptor_for_perl = WORKSPACE_PARENT_DIR / receptor_file.name
                     shutil.copy(receptor_file, temp_receptor_for_perl)
 
-                    # Find and copy the corresponding config file.
-                    # Assumes config file is named like <protein_base>.txt or config_<protein_base>.txt
-                    # Or, if only one config is fetched, use that.
-                    # This logic might need refinement based on how Vina_screening.pl finds its config.
                     config_for_this_protein = None
                     if len(current_configs) == 1:
                         config_for_this_protein = Path(current_configs[0])
                     else:
                         for cfg_path_str in current_configs:
                             cfg_file = Path(cfg_path_str)
-                            if protein_base in cfg_file.name: # Simple matching
+                            if protein_base in cfg_file.name:
                                 config_for_this_protein = cfg_file
                                 break
                     
                     temp_config_for_perl = None
                     if config_for_this_protein:
-                        # Vina_screening.pl might expect a specific config name, e.g., <protein_base>.txt
-                        expected_config_name_for_perl = f"{protein_base}.txt" # Or check script's expectation
+                        expected_config_name_for_perl = f"{protein_base}.txt"
                         temp_config_for_perl = WORKSPACE_PARENT_DIR / expected_config_name_for_perl
                         shutil.copy(config_for_this_protein, temp_config_for_perl)
                         st.info(f"Using config `{config_for_this_protein.name}` (as `{expected_config_name_for_perl}`) for `{receptor_file.name}`.")
                     else:
-                        st.warning(f"Could not determine a specific config for `{receptor_file.name}`. "
-                                   f"Perl script might use defaults or fail if config is mandatory.")
+                        st.warning(f"Could not determine a specific config for `{receptor_file.name}`.")
 
-                    # Prepare output directory for this protein (as Vina_screening.pl might create it)
                     protein_specific_output_dir = DOCKING_OUTPUT_DIR_LOCAL / protein_base
-                    protein_specific_output_dir.mkdir(parents=True, exist_ok=True) # Script might expect it
+                    protein_specific_output_dir.mkdir(parents=True, exist_ok=True)
                     
-                    # Command: echo /path/to/ligands_list.txt | perl /path/to/Vina_screening.pl protein_base_name
-                    # The script is run with CWD = WORKSPACE_PARENT_DIR
-                    # The protein_base_name argument tells the script which receptor/config to use (e.g., protein_base.pdbqt, protein_base.txt)
                     cmd_perl = [
                         "perl",
-                        str(Path(vina_screening_pl_local).resolve()),
-                        protein_base # Argument to Perl script
+                        str(VINA_SCREENING_PL_LOCAL_PATH.resolve()), # Use local Perl script path
+                        protein_base
                     ]
                     st.code(f"echo {str(ligand_list_file_for_perl.resolve())} | {' '.join(cmd_perl)}")
 
                     try:
                         process = subprocess.Popen(
-                            cmd_perl,
-                            stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True,
-                            cwd=WORKSPACE_PARENT_DIR # Run where temp receptor/config are
+                            cmd_perl, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, cwd=str(WORKSPACE_PARENT_DIR.resolve()) # Ensure CWD is resolved
                         )
-                        # Pass the path of the ligand list file to stdin of the Perl script
                         stdout_perl, stderr_perl = process.communicate(input=str(ligand_list_file_for_perl.resolve()) + "\n")
 
                         if process.returncode == 0:
@@ -546,14 +545,13 @@ else:
                             st.text(stdout_perl if stdout_perl else "No standard output.")
                         with st.expander(f"Perl script STDERR for {receptor_file.name}", expanded=True):
                             st.text(stderr_perl if stderr_perl else "No standard error output.")
-                        st.info(f"Docking outputs for `{receptor_file.name}` should be in `{DOCKING_OUTPUT_DIR_LOCAL}/{protein_base}` (as created by the Perl script).")
+                        st.info(f"Docking outputs for `{receptor_file.name}` should be in `{protein_specific_output_dir}`.")
 
                     except Exception as e_perl:
                         st.error(f"Error executing `Vina_screening.pl` for `{receptor_file.name}`: {e_perl}")
                     finally:
-                        # Clean up temporary receptor/config copied for Perl script
-                        if temp_receptor_for_perl and temp_receptor_for_perl.exists(): temp_receptor_for_perl.unlink()
-                        if temp_config_for_perl and temp_config_for_perl.exists(): temp_config_for_perl.unlink()
+                        if temp_receptor_for_perl and temp_receptor_for_perl.exists(): temp_receptor_for_perl.unlink(missing_ok=True)
+                        if temp_config_for_perl and temp_config_for_perl.exists(): temp_config_for_perl.unlink(missing_ok=True)
                     
                     overall_docking_progress.progress((i + 1) / len(current_receptors))
         else: # Direct Vina calls
@@ -576,7 +574,6 @@ else:
                         st.markdown(f"--- \n**Job {job_counter}/{num_total_direct_jobs}:** "
                                     f"`{receptor_file.name}` + `{ligand_file.name}` (Config: `{config_file.name}`)")
 
-                        # Define output file names based on inputs
                         output_base = f"{receptor_file.stem}_{ligand_file.stem}_{config_file.stem}"
                         output_pdbqt_docked = DOCKING_OUTPUT_DIR_LOCAL / f"{output_base}_out.pdbqt"
                         output_log_file = DOCKING_OUTPUT_DIR_LOCAL / f"{output_base}_log.txt"
@@ -588,12 +585,11 @@ else:
                             "--config", str(config_file.resolve()),
                             "--out", str(output_pdbqt_docked.resolve()),
                             "--log", str(output_log_file.resolve())
-                            # Add other Vina params like --exhaustiveness if not in config
                         ]
                         st.code(" ".join(cmd_vina_direct))
 
                         try:
-                            vina_run_result = subprocess.run(cmd_vina_direct, capture_output=True, text=True, check=True, cwd=WORKSPACE_PARENT_DIR)
+                            vina_run_result = subprocess.run(cmd_vina_direct, capture_output=True, text=True, check=True, cwd=str(WORKSPACE_PARENT_DIR.resolve()))
                             st.success("Vina docking job completed successfully!")
                             with st.expander("Vina STDOUT", expanded=False):
                                 st.text(vina_run_result.stdout if vina_run_result.stdout else "No standard output.")
@@ -601,13 +597,12 @@ else:
                                 with st.expander("Vina STDERR (check for warnings)", expanded=True):
                                     st.text(vina_run_result.stderr)
                             
-                            # Provide download links for the results
                             if output_pdbqt_docked.exists():
                                 with open(output_pdbqt_docked, "rb") as fp:
-                                    st.download_button(label=f"Download Docked PDBQT ({output_pdbqt_docked.name})", data=fp, file_name=output_pdbqt_docked.name, mime="chemical/x-pdbqt")
+                                    st.download_button(label=f"Download Docked PDBQT ({output_pdbqt_docked.name})", data=fp, file_name=output_pdbqt_docked.name, mime="chemical/x-pdbqt", key=f"dl_pdbqt_{job_counter}")
                             if output_log_file.exists():
                                 with open(output_log_file, "r", encoding='utf-8') as fp:
-                                     st.download_button(label=f"Download Log File ({output_log_file.name})", data=fp.read(), file_name=output_log_file.name, mime="text/plain")
+                                     st.download_button(label=f"Download Log File ({output_log_file.name})", data=fp.read(), file_name=output_log_file.name, mime="text/plain",  key=f"dl_log_{job_counter}")
 
                         except subprocess.CalledProcessError as e_vina_direct:
                             st.error(f"Vina docking job FAILED (Return code: {e_vina_direct.returncode}).")
@@ -627,4 +622,4 @@ else:
         st.info(f"All docking outputs can be found in the `{DOCKING_OUTPUT_DIR_LOCAL}` directory (relative to the app's root on the server). You may need to use other tools or app features (if added) to browse/manage these files directly on the server.")
 
 st.markdown("---")
-st.caption("Developed with Streamlit. AutoDock Vina for docking simulations.")
+st.caption(f"Docking App v{APP_VERSION} | Developed with Streamlit. AutoDock Vina for docking simulations.")
