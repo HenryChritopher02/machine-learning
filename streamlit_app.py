@@ -375,7 +375,7 @@ def display_ensemble_docking_procedure():
             if _current_batch_processed_details:
                  st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
                  st.success(f"Added {len(_current_batch_processed_details)} ligand(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
-            elif not (not inchikey_or_smiles_val.strip() or not lig_name_base_input.strip() or (not scrub_py_ok or not mk_prepare_ligand_py_ok)): # only warn if an attempt was made
+            elif not (not inchikey_or_smiles_val.strip() or not lig_name_base_input.strip() or (not scrub_py_ok or not mk_prepare_ligand_py_ok)): 
                  st.warning("No ligands were successfully prepared and added in this step.")
 
 
@@ -520,38 +520,49 @@ def display_ensemble_docking_procedure():
     st.markdown("---")
 
     st.subheader("🚀 Docking Execution")
-    final_ligand_details_list = st.session_state.get('prepared_ligand_details_list', [])
+    
+    # Fetch current state of receptors and configs for the conditions below
     current_receptors = st.session_state.get('fetched_receptor_paths', [])
     current_configs = st.session_state.get('fetched_config_paths', [])
+    # The actual list of ligands for the run will be fetched inside the button block
 
-    if not vina_ready: st.error("Vina executable not set up.")
-    elif not current_receptors: st.warning("No receptors available for docking.")
-    elif not final_ligand_details_list: st.warning("No ligands prepared and added for docking.")
-    elif not current_configs: st.warning("No Vina configs available for docking.")
-    else:
-        st.info(f"Ready for {len(final_ligand_details_list)} ligand(s) vs {len(current_receptors)} receptor(s).")
-        use_vina_screening_perl = False
-        if len(final_ligand_details_list) >= 1 and vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists():
-            use_vina_screening_perl = st.checkbox("Use `Vina_screening.pl` (Strict Protein-Config Pairing)?", value=True, key="use_perl_dockpage_main_cb")
+    if st.button("Start Docking Run", key="start_docking_main_btn_main_page", type="primary"):
+        final_ligand_details_list_for_run = list(st.session_state.get('prepared_ligand_details_list', [])) # Use a copy for this run
 
-        if st.button("Start Docking Run", key="start_docking_main_btn_main_page", type="primary"):
-            # st.write(f"DEBUG: Starting docking run. Number of prepared ligands: {len(final_ligand_details_list)}")
-            # if final_ligand_details_list:
-            #     st.write("DEBUG: First prepared ligand details:", final_ligand_details_list[0])
-            # else:
-            #     st.warning("DEBUG: final_ligand_details_list is empty before starting docking loops.")
+        # Debugging:
+        # st.write(f"DEBUG: 'Start Docking Run' clicked. Number of ligands for this run: {len(final_ligand_details_list_for_run)}")
+        # if final_ligand_details_list_for_run:
+        #     st.write("DEBUG: First ligand for this run:", final_ligand_details_list_for_run[0])
+        # else:
+        #     st.warning("DEBUG: final_ligand_details_list_for_run is empty at the start of docking logic.")
 
-            st.session_state.docking_run_outputs = []
+        if not vina_ready: 
+            st.error("Vina executable not set up. Cannot start docking.")
+        elif not current_receptors: 
+            st.warning("No receptors available for docking. Please fetch receptors.")
+        elif not final_ligand_details_list_for_run: 
+            st.warning("No ligands prepared and added for docking. Please prepare ligands.")
+        elif not current_configs: 
+            st.warning("No Vina configs available for docking. Please fetch configs.")
+        else:
+            st.info(f"Starting docking for {len(final_ligand_details_list_for_run)} ligand(s) vs {len(current_receptors)} receptor(s).")
+            st.session_state.docking_run_outputs = [] # Reset for this specific run
             DOCKING_OUTPUT_DIR_LOCAL.mkdir(parents=True, exist_ok=True)
 
-            if use_vina_screening_perl:
+            use_vina_screening_perl_for_run = False # Determine at runtime based on checkbox
+            if len(final_ligand_details_list_for_run) >= 1 and vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists():
+                 # Checkbox state is read here, when the button is clicked
+                use_vina_screening_perl_for_run = st.session_state.get("use_perl_dockpage_main_cb", True)
+
+
+            if use_vina_screening_perl_for_run:
                 st.markdown("##### Docking via `Vina_screening.pl` (Strict Protein-Config Pairing)")
                 if not (vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists() and os.access(VINA_SCREENING_PL_LOCAL_PATH, os.X_OK)):
                     st.error("Local `Vina_screening.pl` script not available or not executable.")
                 else:
                     ligand_list_file_for_perl = WORKSPACE_PARENT_DIR / "ligands_for_perl.txt"
                     with open(ligand_list_file_for_perl, "w") as f:
-                        for lig_detail in final_ligand_details_list:
+                        for lig_detail in final_ligand_details_list_for_run:
                             f.write(str(Path(lig_detail['pdbqt_path']).resolve()) + "\n")
 
                     overall_docking_progress = st.progress(0)
@@ -582,16 +593,15 @@ def display_ensemble_docking_procedure():
                                 st.success(f"Perl script completed for `{protein_base}`.")
                             else: 
                                 st.error(f"Perl script failed for `{protein_base}` (RC: {return_code_perl}).")
-                                if stderr_p.strip(): # Show STDERR only if script failed
+                                if stderr_p.strip():
                                      with st.expander(f"Perl STDERR for {protein_base} (on error)", expanded=True): st.text(stderr_p)
-
 
                             if stdout_p.strip():
                                 with st.expander(f"Perl STDOUT for {protein_base}", expanded=False): st.text(stdout_p)
                             
                             perl_protein_out_dir = WORKSPACE_PARENT_DIR / protein_base
                             if perl_protein_out_dir.is_dir():
-                                for lig_detail in final_ligand_details_list:
+                                for lig_detail in final_ligand_details_list_for_run:
                                     score = None
                                     log_found_and_parsed = False
                                     
@@ -610,10 +620,9 @@ def display_ensemble_docking_procedure():
                                             score = parse_vina_log(str(expected_log_file2))
                                             if score is not None:
                                                 log_found_and_parsed = True
-                                                # st.info(f"DEBUG: Used alternative log name {log_name_pattern2} for {lig_detail['base_name']} with {protein_base}")
 
                                     if log_found_and_parsed:
-                                        # st.write(f"DEBUG (Perl): Parsed score {score} for {lig_detail['base_name']} with {protein_base}")
+                                        # st.write(f"DEBUG (Perl): Appending score {score} for {lig_detail['base_name']}")
                                         st.session_state.docking_run_outputs.append({
                                             "ligand_id": lig_detail["id"],
                                             "ligand_base_name": lig_detail["base_name"],
@@ -621,9 +630,8 @@ def display_ensemble_docking_procedure():
                                             "config_stem": config_to_use.stem,
                                             "score": score
                                         })
-                                    # Removed the explicit warning for individual missing logs if perl script itself didn't clearly fail
                             else:
-                                if return_code_perl == 0 : # Only warn if script was supposed to succeed
+                                if return_code_perl == 0 : 
                                     st.warning(f"Perl output directory not found: {perl_protein_out_dir}, though script reported success.")
                         except Exception as e_p: st.error(f"Error running Perl script for `{protein_base}`: {e_p}")
                         finally:
@@ -647,7 +655,7 @@ def display_ensemble_docking_procedure():
                     else: paired_config_file = find_paired_config_for_protein(protein_base, current_configs)
 
                     if paired_config_file:
-                        for lig_detail in final_ligand_details_list:
+                        for lig_detail in final_ligand_details_list_for_run:
                             planned_docking_jobs.append({"ligand_info": lig_detail, "receptor": receptor_file, "config": paired_config_file})
                     elif protein_base not in skipped_receptors_direct_mode: st.warning(f"No matching config for '{receptor_file.name}'. Skip."); skipped_receptors_direct_mode.add(protein_base)
 
@@ -677,7 +685,7 @@ def display_ensemble_docking_procedure():
 
                             score = parse_score_from_pdbqt(str(output_pdbqt_docked.resolve()))
                             if score is not None:
-                                # st.write(f"DEBUG (Direct): Parsed score {score} for {lig_info['base_name']} with {receptor_file.stem}")
+                                # st.write(f"DEBUG (Direct): Appending score {score} for {lig_info['base_name']}")
                                 st.session_state.docking_run_outputs.append({
                                     "ligand_id": lig_info["id"],
                                     "ligand_base_name": lig_info["base_name"],
@@ -742,7 +750,7 @@ def display_ensemble_docking_procedure():
                     st.caption("Raw results data (first 5 if available):")
                     st.json(st.session_state.docking_run_outputs[:5])
             else:
-                st.info("No docking outputs recorded to summarize.")
+                st.info("No docking outputs recorded to summarize.") # This is the message user is seeing
             st.balloons()
             st.header("🏁 Docking Run Finished 🏁")
             st.caption(f"Docked PDBQTs in `{DOCKING_OUTPUT_DIR_LOCAL.name}/`. Perl script outputs in `{WORKSPACE_PARENT_DIR.name}/<protein_base_name>/`.")
