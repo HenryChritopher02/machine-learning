@@ -15,6 +15,12 @@ APP_VERSION = "1.2.5" # For tracking changes (added sys.executable and debug)
 
 # GitHub URL for RECEPTORS and CONFIGS (if they are still remote)
 BASE_GITHUB_URL_FOR_DATA = "https://raw.githubusercontent.com/HenryChritopher02/bace1/main/ensemble-docking/"
+GH_API_BASE_URL = "https://api.github.com/repos/"
+GH_OWNER = "HenryChritopher02"
+GH_REPO = "bace1"
+GH_BRANCH = "main" # Or derive from BASE_GITHUB_URL_FOR_DATA if it can change
+# Path within the repo to the root of the ensemble-docking files
+GH_ENSEMBLE_DOCKING_ROOT_PATH = "ensemble-docking"
 RECEPTOR_SUBDIR_GH = "ensemble_protein/" # Relative to BASE_GITHUB_URL_FOR_DATA
 CONFIG_SUBDIR_GH = "config/"           # Relative to BASE_GITHUB_URL_FOR_DATA
 
@@ -39,6 +45,55 @@ ZIP_EXTRACT_DIR_LOCAL = WORKSPACE_PARENT_DIR / "zip_extracted_ligands"
 DOCKING_OUTPUT_DIR_LOCAL = APP_ROOT / "autodock_outputs"
 
 # --- Helper Functions ---
+
+def list_files_from_github_repo_dir(owner: str, repo: str, dir_path_in_repo: str, branch: str, file_extension: str = None) -> list[str]:
+    """
+    Lists files in a GitHub repository directory using the GitHub API.
+    Filters by file extension if provided.
+    """
+    api_url = f"{GH_API_BASE_URL}{owner}/{repo}/contents/{dir_path_in_repo}?ref={branch}"
+    st.sidebar.caption(f"API URL: {api_url}") # For debugging
+    filenames = []
+    try:
+        response = requests.get(api_url, timeout=10) # Added timeout
+        response.raise_for_status() # Will raise an HTTPError for bad responses (4XX, 5XX)
+        contents = response.json()
+
+        if not isinstance(contents, list):
+            st.sidebar.error(f"Unexpected API response format for {dir_path_in_repo}. Expected a list.")
+            if isinstance(contents, dict) and 'message' in contents:
+                st.sidebar.error(f"GitHub API Message: {contents['message']}")
+            return []
+
+        for item in contents:
+            if item.get('type') == 'file':
+                if file_extension:
+                    if item.get('name', '').lower().endswith(file_extension.lower()):
+                        filenames.append(item['name'])
+                else:
+                    filenames.append(item['name'])
+        if not filenames:
+            st.sidebar.warning(f"No files with extension '{file_extension}' found in '{dir_path_in_repo}'.")
+        else:
+            st.sidebar.caption(f"Found {len(filenames)} file(s) in '{dir_path_in_repo}'.")
+
+    except requests.exceptions.Timeout:
+        st.sidebar.error(f"Timeout while trying to list files from GitHub directory: {dir_path_in_repo}")
+    except requests.exceptions.HTTPError as e:
+        st.sidebar.error(f"HTTP error listing files from {dir_path_in_repo}: {e}")
+        if e.response is not None and e.response.content:
+            try:
+                error_details = e.response.json()
+                if 'message' in error_details:
+                    st.sidebar.error(f"GitHub API Message: {error_details['message']}")
+            except ValueError: # Not JSON
+                st.sidebar.error(f"Raw error response: {e.response.text[:200]}") # Show first 200 chars
+    except requests.exceptions.RequestException as e:
+        st.sidebar.error(f"Error listing files from {dir_path_in_repo}: {e}")
+    except ValueError as e: # JSONDecodeError inherits from ValueError
+        st.sidebar.error(f"Error decoding JSON response for {dir_path_in_repo}: {e}")
+
+    return filenames
 
 def initialize_directories():
     """Creates necessary local workspace and output directories."""
@@ -345,53 +400,103 @@ if vina_screening_pl_ok:
 
 vina_ready = check_vina_binary()
 
+# --- Receptor Data Source ---
+st.sidebar.subheader(" Receptor Data Source")
+# Construct the path to the receptor directory within the GitHub repository
+receptor_dir_in_repo = f"{GH_ENSEMBLE_DOCKING_ROOT_PATH}/{RECEPTOR_SUBDIR_GH.strip('/')}"
 
-st.sidebar.subheader("Receptor Data Source")
-receptor_file_names_input = st.sidebar.text_area(
-    f"Receptor PDBQT filenames (one per line, from remote .../{RECEPTOR_SUBDIR_GH})",
-    help="Enter exact filenames of receptor PDBQT files from the GitHub repository."
-)
-if receptor_file_names_input.strip() and st.sidebar.button("Fetch Remote Receptors", key="fetch_receptors"):
-    receptor_names = [name.strip() for name in receptor_file_names_input.splitlines() if name.strip()]
-    fetched_receptor_paths_temp = []
-    with st.spinner("Fetching receptor files..."):
-        for r_name in receptor_names:
-            path = download_file_from_github(BASE_GITHUB_URL_FOR_DATA, RECEPTOR_SUBDIR_GH + r_name, r_name, RECEPTOR_DIR_LOCAL)
-            if path: fetched_receptor_paths_temp.append(path)
-    if fetched_receptor_paths_temp:
-        st.sidebar.success(f"Successfully fetched {len(fetched_receptor_paths_temp)} remote receptors.")
-        st.session_state.fetched_receptor_paths = fetched_receptor_paths_temp
+if st.sidebar.button("Fetch All Receptor Files from GitHub", key="fetch_all_receptors"):
+    st.session_state.fetched_receptor_paths = [] # Reset
+    with st.spinner(f"Listing .pdbqt files in GitHub directory: {receptor_dir_in_repo}..."):
+        receptor_filenames = list_files_from_github_repo_dir(
+            owner=GH_OWNER,
+            repo=GH_REPO,
+            dir_path_in_repo=receptor_dir_in_repo,
+            branch=GH_BRANCH,
+            file_extension=".pdbqt"
+        )
+
+    if receptor_filenames:
+        st.sidebar.info(f"Found {len(receptor_filenames)} receptor(s). Downloading...")
+        fetched_receptor_paths_temp = []
+        receptor_progress = st.sidebar.progress(0)
+        for i, r_name in enumerate(receptor_filenames):
+            # Construct the full relative path for downloading via raw.githubusercontent
+            download_path_on_github = f"{RECEPTOR_SUBDIR_GH}{r_name}" # Relative to BASE_GITHUB_URL_FOR_DATA's ensemble-docking part
+            path = download_file_from_github(
+                BASE_GITHUB_URL_FOR_DATA, # This is the raw download base
+                download_path_on_github,  # This is the path segment from ensemble-docking/ onwards
+                r_name,
+                RECEPTOR_DIR_LOCAL
+            )
+            if path:
+                fetched_receptor_paths_temp.append(path)
+            receptor_progress.progress((i + 1) / len(receptor_filenames))
+        
+        if fetched_receptor_paths_temp:
+            st.sidebar.success(f"Successfully fetched {len(fetched_receptor_paths_temp)} receptors.")
+            st.session_state.fetched_receptor_paths = fetched_receptor_paths_temp
+        else:
+            st.sidebar.error("No receptors downloaded, though some were listed. Check download paths/permissions.")
+    elif not receptor_filenames and Path(RECEPTOR_DIR_LOCAL).exists() and any(Path(RECEPTOR_DIR_LOCAL).iterdir()):
+        st.sidebar.info("No new receptors listed from GitHub. Using previously fetched/existing local receptors if any.")
+        st.session_state.fetched_receptor_paths = [str(p) for p in Path(RECEPTOR_DIR_LOCAL).glob("*.pdbqt")]
     else:
-        st.sidebar.error("No remote receptors fetched. Check filenames or GitHub path.")
+        st.sidebar.warning("No receptor PDBQT files found in the specified GitHub directory.")
 
 if 'fetched_receptor_paths' in st.session_state and st.session_state.fetched_receptor_paths:
-    st.sidebar.markdown(f"**{len(st.session_state.fetched_receptor_paths)} Receptors Ready:**")
-    for p in st.session_state.fetched_receptor_paths:
-        st.sidebar.caption(f"- {Path(p).name}")
+    st.sidebar.markdown(f"**{len(st.session_state.fetched_receptor_paths)} Receptor(s) Ready:**")
+    with st.sidebar.expander("View Fetched Receptors", expanded=False):
+        for p_str in st.session_state.fetched_receptor_paths:
+            st.caption(f"- {Path(p_str).name}")
 
+# --- Vina Config File Data Source ---
+st.sidebar.subheader(" Vina Config File Data Source")
+config_dir_in_repo = f"{GH_ENSEMBLE_DOCKING_ROOT_PATH}/{CONFIG_SUBDIR_GH.strip('/')}"
 
-st.sidebar.subheader("Vina Config File Data Source")
-config_file_names_input = st.sidebar.text_area(
-    f"Vina config filenames (one per line, from remote .../{CONFIG_SUBDIR_GH})",
-    help="Enter exact filenames of Vina config TXT files from the GitHub repository."
-)
-if config_file_names_input.strip() and st.sidebar.button("Fetch Remote Config Files", key="fetch_configs"):
-    config_names = [name.strip() for name in config_file_names_input.splitlines() if name.strip()]
-    fetched_config_paths_temp = []
-    with st.spinner("Fetching remote config files..."):
-        for c_name in config_names:
-            path = download_file_from_github(BASE_GITHUB_URL_FOR_DATA, CONFIG_SUBDIR_GH + c_name, c_name, CONFIG_DIR_LOCAL)
-            if path: fetched_config_paths_temp.append(path)
-    if fetched_config_paths_temp:
-        st.sidebar.success(f"Successfully fetched {len(fetched_config_paths_temp)} remote config files.")
-        st.session_state.fetched_config_paths = fetched_config_paths_temp
+if st.sidebar.button("Fetch All Config Files from GitHub", key="fetch_all_configs"):
+    st.session_state.fetched_config_paths = [] # Reset
+    with st.spinner(f"Listing .txt files in GitHub directory: {config_dir_in_repo}..."):
+        config_filenames = list_files_from_github_repo_dir(
+            owner=GH_OWNER,
+            repo=GH_REPO,
+            dir_path_in_repo=config_dir_in_repo,
+            branch=GH_BRANCH,
+            file_extension=".txt"
+        )
+    
+    if config_filenames:
+        st.sidebar.info(f"Found {len(config_filenames)} config file(s). Downloading...")
+        fetched_config_paths_temp = []
+        config_progress = st.sidebar.progress(0)
+        for i, c_name in enumerate(config_filenames):
+            download_path_on_github = f"{CONFIG_SUBDIR_GH}{c_name}"
+            path = download_file_from_github(
+                BASE_GITHUB_URL_FOR_DATA,
+                download_path_on_github,
+                c_name,
+                CONFIG_DIR_LOCAL
+            )
+            if path:
+                fetched_config_paths_temp.append(path)
+            config_progress.progress((i + 1) / len(config_filenames))
+
+        if fetched_config_paths_temp:
+            st.sidebar.success(f"Successfully fetched {len(fetched_config_paths_temp)} config files.")
+            st.session_state.fetched_config_paths = fetched_config_paths_temp
+        else:
+            st.sidebar.error("No config files downloaded, though some were listed.")
+    elif not config_filenames and Path(CONFIG_DIR_LOCAL).exists() and any(Path(CONFIG_DIR_LOCAL).iterdir()):
+        st.sidebar.info("No new config files listed from GitHub. Using previously fetched/existing local configs if any.")
+        st.session_state.fetched_config_paths = [str(p) for p in Path(CONFIG_DIR_LOCAL).glob("*.txt")]
     else:
-        st.sidebar.error("No remote config files fetched. Check filenames or GitHub path.")
+        st.sidebar.warning("No config TXT files found in the specified GitHub directory.")
 
 if 'fetched_config_paths' in st.session_state and st.session_state.fetched_config_paths:
-    st.sidebar.markdown(f"**{len(st.session_state.fetched_config_paths)} Configs Ready:**")
-    for p in st.session_state.fetched_config_paths:
-        st.sidebar.caption(f"- {Path(p).name}")
+    st.sidebar.markdown(f"**{len(st.session_state.fetched_config_paths)} Config(s) Ready:**")
+    with st.sidebar.expander("View Fetched Configs", expanded=False):
+        for p_str in st.session_state.fetched_config_paths:
+            st.caption(f"- {Path(p_str).name}")
 
 # --- Ligand Input Section ---
 st.header("🔬 Ligand Input & Preparation")
