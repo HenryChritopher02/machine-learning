@@ -565,17 +565,26 @@ else:
                     
                     cmd_perl = [
                         "perl",
-                        str(VINA_SCREENING_PL_LOCAL_PATH.resolve()), # Use local Perl script path
-                        protein_base
+                        str(VINA_SCREENING_PL_LOCAL_PATH.resolve()), # Path to this modified Vina_screening.pl
+                        str(config_to_use.resolve())                 # ARG[0]: Path to the specific .txt config file
                     ]
-                    st.code(f"echo {str(ligand_list_file_for_perl.resolve())} | {' '.join(cmd_perl)}")
-
+                    st.code(f"(cat {str(ligand_list_file_for_perl.resolve())}) | {' '.join(cmd_perl)}") # Shows how it would be run manually
+                
                     try:
+                        # Read the content of the ligand list file
+                        with open(ligand_list_file_for_perl, "r") as f_ligands:
+                            ligand_paths_content = f_ligands.read()
+                
                         process = subprocess.Popen(
-                            cmd_perl, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            text=True, cwd=str(WORKSPACE_PARENT_DIR.resolve()) # Ensure CWD is resolved
+                            cmd_perl,
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                            cwd=str(WORKSPACE_PARENT_DIR.resolve()) # Or DOCKING_OUTPUT_DIR_LOCAL / protein_base
+                                                                   # CWD determines where Vina's default outputs go if not in config
                         )
-                        stdout_perl, stderr_perl = process.communicate(input=str(ligand_list_file_for_perl.resolve()) + "\n")
+                        stdout_perl, stderr_perl = process.communicate(input=ligand_paths_content) # Pipe the content
 
                         if process.returncode == 0:
                             st.success(f"`Vina_screening.pl` completed for `{receptor_file.name}`.")
