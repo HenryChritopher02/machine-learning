@@ -348,7 +348,7 @@ def display_ensemble_docking_procedure():
         use_inchikey = st.checkbox("Input is InChIKey", value=False, key="use_inchikey_main_cb_lig")
         lig_name_base_input = st.text_input("Ligand Base Name:", value="ligand_smiles", key="lig_name_main_name_lig")
         if st.button("Prepare & Add This SMILES Ligand", key="prep_add_smiles_main_btn_lig"):
-            _batch_details = []
+            _current_batch_processed_details = []
             if not inchikey_or_smiles_val.strip():
                 st.warning("Please enter a SMILES string or InChIKey.")
             elif not lig_name_base_input.strip():
@@ -367,19 +367,21 @@ def display_ensemble_docking_procedure():
                     detail = convert_smiles_to_pdbqt(actual_smiles, lig_name_base_input, LIGAND_PREP_DIR_LOCAL, g_ph_val, g_skip_tautomer, g_skip_acidbase, SCRUB_PY_LOCAL_PATH, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
                     if detail:
                         detail['id'] = actual_smiles
-                        _batch_details.append(detail)
+                        _current_batch_processed_details.append(detail)
                         st.success(f"SMILES ligand '{lig_name_base_input}' prepared: {Path(detail['pdbqt_path']).name}")
                     else:
                         st.error(f"Failed to prepare ligand from SMILES: {actual_smiles}")
-            if _batch_details:
-                 st.session_state.prepared_ligand_details_list.extend(_batch_details)
-                 st.success(f"Added {len(_batch_details)} ligand(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
+            if _current_batch_processed_details:
+                 st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
+                 st.success(f"Added {len(_current_batch_processed_details)} ligand(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
+            elif not (not inchikey_or_smiles_val.strip() or not lig_name_base_input.strip() or not scrub_py_ok or not mk_prepare_ligand_py_ok):
+                 st.warning("No ligands were successfully prepared and added in this step.")
 
 
     elif ligand_input_method == "SMILES File (.txt)":
         uploaded_smiles_file = st.file_uploader("Upload SMILES file (.txt):", type="txt", key="smiles_uploader_main_file_lig")
         if st.button("Process & Add SMILES File", key="process_add_smiles_file_btn"):
-            _batch_details = []
+            _current_batch_processed_details = []
             if not uploaded_smiles_file:
                 st.warning("Please upload a SMILES file first.")
             elif not scrub_py_ok or not mk_prepare_ligand_py_ok:
@@ -398,36 +400,41 @@ def display_ensemble_docking_procedure():
                             detail = convert_smiles_to_pdbqt(smiles_str, lig_name_base, LIGAND_PREP_DIR_LOCAL, g_ph_val, g_skip_tautomer, g_skip_acidbase, SCRUB_PY_LOCAL_PATH, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
                             if detail:
                                 detail['id'] = smiles_str
-                                _batch_details.append(detail)
+                                _current_batch_processed_details.append(detail)
                                 st.success(f"SMILES ligand '{lig_name_base}' prepared: {Path(detail['pdbqt_path']).name}")
                             else:
                                 st.error(f"Failed to prepare ligand from SMILES: {smiles_str}")
                 except Exception as e:
                     st.error(f"Error reading or processing SMILES file: {e}")
-            if _batch_details:
-                st.session_state.prepared_ligand_details_list.extend(_batch_details)
-                st.success(f"Added {len(_batch_details)} ligand(s) from file. Total ready: {len(st.session_state.prepared_ligand_details_list)}")
+            if _current_batch_processed_details:
+                st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
+                st.success(f"Added {len(_current_batch_processed_details)} ligand(s) from file. Total ready: {len(st.session_state.prepared_ligand_details_list)}")
+            elif uploaded_smiles_file:
+                 st.warning("No ligands were successfully prepared and added from the file.")
+
 
     elif ligand_input_method == "PDBQT File(s)":
         uploaded_pdbqt_files = st.file_uploader("Upload PDBQT ligand(s):", type="pdbqt", accept_multiple_files=True, key="pdbqt_uploader_main_file_lig_btn")
         if st.button("Add Uploaded PDBQT(s)", key="add_pdbqt_btn"):
-            _batch_details = []
+            _current_batch_processed_details = []
             if not uploaded_pdbqt_files:
                 st.warning("No PDBQT files uploaded to add.")
             else:
                 for up_file in uploaded_pdbqt_files:
                     dest_path = LIGAND_PREP_DIR_LOCAL / up_file.name
                     with open(dest_path, "wb") as f: f.write(up_file.getbuffer())
-                    _batch_details.append({"id": up_file.name, "pdbqt_path": str(dest_path), "base_name": Path(up_file.name).stem})
-                if _batch_details:
-                    st.session_state.prepared_ligand_details_list.extend(_batch_details)
-                    st.success(f"Added {len(_batch_details)} PDBQT file(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
+                    _current_batch_processed_details.append({"id": up_file.name, "pdbqt_path": str(dest_path), "base_name": Path(up_file.name).stem})
+                if _current_batch_processed_details:
+                    st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
+                    st.success(f"Added {len(_current_batch_processed_details)} PDBQT file(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
+                else:
+                    st.warning("No PDBQT files were added.")
 
 
     elif ligand_input_method == "Other Ligand File(s)":
         uploaded_other_files = st.file_uploader("Upload other ligand file(s) (e.g., SDF, MOL2, PDB):", accept_multiple_files=True, key="other_lig_uploader_main_file_lig_btn", help="Files will be converted to PDBQT.")
         if st.button("Process & Add Other Ligand Files", key="process_add_other_files_btn"):
-            _batch_details = []
+            _current_batch_processed_details = []
             if not uploaded_other_files:
                 st.warning("No files uploaded to process.")
             elif not mk_prepare_ligand_py_ok:
@@ -440,19 +447,22 @@ def display_ensemble_docking_procedure():
                         f.write(up_file.getbuffer())
                     detail = convert_ligand_file_to_pdbqt(str(temp_ligand_path), up_file.name, LIGAND_PREP_DIR_LOCAL, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
                     if detail:
-                        _batch_details.append(detail)
+                        _current_batch_processed_details.append(detail)
                         st.success(f"Ligand '{up_file.name}' converted to PDBQT: {Path(detail['pdbqt_path']).name}")
                     else:
                         st.error(f"Failed to convert ligand file: {up_file.name}")
                     if temp_ligand_path.exists(): temp_ligand_path.unlink(missing_ok=True)
-            if _batch_details:
-                st.session_state.prepared_ligand_details_list.extend(_batch_details)
-                st.success(f"Added {len(_batch_details)} converted ligand(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
+            if _current_batch_processed_details:
+                st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
+                st.success(f"Added {len(_current_batch_processed_details)} converted ligand(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
+            elif uploaded_other_files:
+                 st.warning("No ligands were successfully prepared and added from the uploaded files.")
+
 
     elif ligand_input_method == "ZIP Archive":
         uploaded_zip_file = st.file_uploader("Upload ZIP archive of ligand files (PDBQT, SDF, MOL2, PDB):", type="zip", key="zip_uploader_main_file_lig_btn")
         if st.button("Process & Add ZIP Archive", key="process_add_zip_archive_btn"):
-            _batch_details = []
+            _current_batch_processed_details = []
             if not uploaded_zip_file:
                 st.warning("No ZIP archive uploaded.")
             else:
@@ -476,12 +486,12 @@ def display_ensemble_docking_procedure():
                             if original_filename.lower().endswith(".pdbqt"):
                                 dest_path = LIGAND_PREP_DIR_LOCAL / original_filename
                                 shutil.copy(extracted_item_path, dest_path)
-                                _batch_details.append({"id": original_filename, "pdbqt_path": str(dest_path), "base_name": Path(original_filename).stem})
+                                _current_batch_processed_details.append({"id": original_filename, "pdbqt_path": str(dest_path), "base_name": Path(original_filename).stem})
                                 st.success(f"PDBQT ligand '{original_filename}' added directly.")
                             elif mk_prepare_ligand_py_ok:
                                 detail = convert_ligand_file_to_pdbqt(str(extracted_item_path), original_filename, LIGAND_PREP_DIR_LOCAL, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
                                 if detail:
-                                    _batch_details.append(detail)
+                                    _current_batch_processed_details.append(detail)
                                     st.success(f"Ligand '{original_filename}' converted: {Path(detail['pdbqt_path']).name}")
                                 else:
                                     st.error(f"Failed to convert extracted ligand: {original_filename}")
@@ -491,9 +501,11 @@ def display_ensemble_docking_procedure():
                 except Exception as e: st.error(f"Error processing ZIP archive: {e}")
                 finally:
                     if zip_file_path.exists(): zip_file_path.unlink(missing_ok=True)
-            if _batch_details:
-                st.session_state.prepared_ligand_details_list.extend(_batch_details)
-                st.success(f"Added {len(_batch_details)} ligand(s) from ZIP. Total ready: {len(st.session_state.prepared_ligand_details_list)}")
+            if _current_batch_processed_details:
+                st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
+                st.success(f"Added {len(_current_batch_processed_details)} ligand(s) from ZIP. Total ready: {len(st.session_state.prepared_ligand_details_list)}")
+            elif uploaded_zip_file:
+                st.warning("No ligands were successfully prepared and added from the ZIP archive.")
 
 
     if st.session_state.get('prepared_ligand_details_list', []):
@@ -568,7 +580,6 @@ def display_ensemble_docking_procedure():
                                     score = None
                                     log_found_and_parsed = False
                                     
-                                    # Try specific log name patterns
                                     log_name_pattern1 = f"{lig_detail['base_name']}_log.txt"
                                     log_name_pattern2 = f"{lig_detail['base_name']}_{protein_base}_log.txt"
                                     
@@ -584,8 +595,7 @@ def display_ensemble_docking_procedure():
                                             score = parse_vina_log(str(expected_log_file2))
                                             if score is not None:
                                                 log_found_and_parsed = True
-                                                st.info(f"Used alternative log name {log_name_pattern2} for {lig_detail['base_name']}")
-
+                                                st.info(f"Used alternative log name {log_name_pattern2} for {lig_detail['base_name']} with {protein_base}")
 
                                     if log_found_and_parsed:
                                         st.session_state.docking_run_outputs.append({
@@ -595,7 +605,7 @@ def display_ensemble_docking_procedure():
                                             "config_stem": config_to_use.stem,
                                             "score": score
                                         })
-                                    else:
+                                    elif not (return_code_perl != 0 and "error" in stderr_p.lower()): # Only warn if perl script didn't clearly fail for other reasons
                                         st.warning(f"No log file found or score parsed for '{lig_detail['base_name']}' with protein '{protein_base}' using expected patterns in '{perl_protein_out_dir}'.")
                             else:
                                 st.warning(f"Perl output directory not found: {perl_protein_out_dir}")
@@ -692,7 +702,7 @@ def display_ensemble_docking_procedure():
                         df_summary = df_pivot.reset_index()
                         
                         new_column_names = {'ligand_id': 'Ligand ID / SMILES', 'ligand_base_name': 'Ligand Base Name'}
-                        for col in df_pivot.columns: # df_pivot.columns are the Protein-Config names
+                        for col in df_pivot.columns: 
                             new_column_names[col] = f"{col} Score (kcal/mol)"
                         df_summary = df_summary.rename(columns=new_column_names)
 
