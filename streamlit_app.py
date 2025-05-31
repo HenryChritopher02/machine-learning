@@ -11,7 +11,7 @@ import sys
 import pandas as pd # Added for DataFrame
 
 # --- Configuration ---
-APP_VERSION = "1.5.0" # Multi-Section, Results Table, Cleaner STDERR
+APP_VERSION = "1.2.5" # Multi-Section, Results Table, Cleaner STDERR
 
 # GitHub URL for RECEPTORS and CONFIGS (if they are still remote)
 BASE_GITHUB_URL_FOR_DATA = "https://raw.githubusercontent.com/HenryChritopher02/bace1/main/ensemble-docking/"
