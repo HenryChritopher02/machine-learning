@@ -239,6 +239,43 @@ def convert_ligand_file_to_pdbqt(input_ligand_file_path_absolute, ligand_name_ba
         return None
     return str(absolute_pdbqt_path) if absolute_pdbqt_path.exists() else None
 
+def find_paired_config_for_protein(protein_base_name: str, all_config_paths: list[str]) -> Path | None:
+    """
+    Finds a config file paired with the given protein base name from a list of config paths.
+    Tries common naming conventions (e.g., protein.txt, config_protein.txt, protein_config.txt).
+    Returns the Path object to the config file or None if no specific match is found.
+    """
+    if not all_config_paths:
+        return None
+
+    # Define patterns to try, in order of preference
+    # Case-insensitive matching for filenames
+    patterns_to_try = [
+        f"{protein_base_name}.txt",
+        f"config_{protein_base_name}.txt",
+        f"{protein_base_name}_config.txt",
+    ]
+
+    for pattern in patterns_to_try:
+        for cfg_path_str in all_config_paths:
+            cfg_file = Path(cfg_path_str)
+            if cfg_file.name.lower() == pattern.lower():
+                st.sidebar.caption(f"Pair found: Protein '{protein_base_name}' -> Config '{cfg_file.name}' (pattern: '{pattern}')")
+                return cfg_file
+
+    # Fallback: if no exact pattern match, try a more general substring check (optional, can be removed for stricter pairing)
+    # For stricter pairing, you might want to remove this fallback or make it more specific.
+    for cfg_path_str in all_config_paths:
+        cfg_file = Path(cfg_path_str)
+        # Ensure it's a .txt file and contains the protein base name and "config" (or is just protein_base.txt)
+        if cfg_file.suffix.lower() == ".txt" and protein_base_name.lower() in cfg_file.stem.lower():
+            if "config" in cfg_file.stem.lower() or cfg_file.stem.lower() == protein_base_name.lower() :
+                 st.sidebar.caption(f"Pair found: Protein '{protein_base_name}' -> Config '{cfg_file.name}' (substring match)")
+                 return cfg_file 
+    
+    st.sidebar.caption(f"No specific config found for protein '{protein_base_name}' by naming convention.")
+    return None
+
 # --- Main Application ---
 st.set_page_config(page_title="Ensemble AutoDock Vina", layout="wide")
 st.title(f"🧬 Ensemble AutoDock Vina Docking App (v{APP_VERSION})")
@@ -491,13 +528,11 @@ if current_prepared_ligands:
             st.caption(f"- `{Path(p_path_str).name}` (at `{p_path_str}`)")
 
 # --- Docking Execution Section ---
-# (Rest of the docking code remains the same as version 1.3.0 you provided)
-# ... (ensure to copy the entire docking execution block from your previous full script) ...
 st.header("🚀 Docking Execution")
 
 final_ligand_list_for_docking = st.session_state.get('prepared_ligand_pdbqt_paths', [])
 current_receptors = st.session_state.get('fetched_receptor_paths', [])
-current_configs = st.session_state.get('fetched_config_paths', [])
+current_configs = st.session_state.get('fetched_config_paths', []) # List of paths to fetched config files
 
 if not vina_ready:
     st.error("Vina executable is not properly set up. Cannot run docking.")
@@ -505,15 +540,17 @@ elif not current_receptors:
     st.warning("No receptors available. Please fetch/select receptors from the sidebar.")
 elif not final_ligand_list_for_docking:
     st.warning("No ligands prepared or uploaded. Please prepare/upload ligands first.")
-elif not current_configs:
+elif not current_configs: # Check if any configs were fetched
     st.warning("No Vina configuration files available. Please fetch/select config files from the sidebar.")
 else:
-    st.info(f"Ready to dock {len(final_ligand_list_for_docking)} ligand(s) against {len(current_receptors)} receptor(s) using {len(current_configs)} configuration(s).")
+    st.info(f"Ready to dock {len(final_ligand_list_for_docking)} ligand(s) against {len(current_receptors)} receptor(s).")
+    st.info(f"{len(current_configs)} configuration file(s) are available: {[Path(c).name for c in current_configs]}")
+
 
     use_vina_screening_perl = False
     if len(final_ligand_list_for_docking) > 1 and vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists():
         use_vina_screening_perl = st.checkbox(
-            "Use local `Vina_screening.pl` for docking multiple ligands? (Recommended for many ligands; processes one receptor at a time)",
+            "Use local `Vina_screening.pl` for docking multiple ligands? (Enforces strict protein-config pairing if multiple configs are present)",
             value=True, key="use_perl_script_cb"
         )
 
@@ -522,196 +559,160 @@ else:
         DOCKING_OUTPUT_DIR_LOCAL.mkdir(parents=True, exist_ok=True)
 
         if use_vina_screening_perl:
-                st.subheader("Docking via Local `Vina_screening.pl`")
-                if not (vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists() and os.access(VINA_SCREENING_PL_LOCAL_PATH, os.X_OK)):
-                    st.error("Local `Vina_screening.pl` script is not available or not executable.")
-                else:
-                    # Create ligand_list.txt for the Perl script (contains absolute paths to ligand PDBQTs)
-                    ligand_list_file_for_perl = WORKSPACE_PARENT_DIR / "ligands_for_perl.txt"
-                    with open(ligand_list_file_for_perl, "w") as f:
-                        for p_path_str in final_ligand_list_for_docking:
-                            f.write(str(Path(p_path_str).resolve()) + "\n")
-                    st.info(f"Created ligand list for Perl script: `{ligand_list_file_for_perl}`")
+            st.subheader("Docking via Local `Vina_screening.pl` (Strict Protein-Config Pairing)")
+            if not (vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists() and os.access(VINA_SCREENING_PL_LOCAL_PATH, os.X_OK)):
+                st.error("Local `Vina_screening.pl` script is not available or not executable.")
+            else:
+                ligand_list_file_for_perl = WORKSPACE_PARENT_DIR / "ligands_for_perl.txt"
+                with open(ligand_list_file_for_perl, "w") as f:
+                    for p_path_str in final_ligand_list_for_docking:
+                        f.write(str(Path(p_path_str).resolve()) + "\n")
+                st.info(f"Created ligand list for Perl script: `{ligand_list_file_for_perl}`")
 
-                    overall_docking_progress = st.progress(0)
-                    receptors_processed_count = 0
+                overall_docking_progress = st.progress(0)
+                receptors_processed_count = 0
+                skipped_receptor_count = 0
 
-                    for i, receptor_path_str in enumerate(current_receptors):
-                        receptor_file = Path(receptor_path_str)
-                        protein_base = receptor_file.stem
-                        st.markdown(f"--- \n#### Processing Receptor: `{receptor_file.name}`")
+                for i, receptor_path_str in enumerate(current_receptors):
+                    receptor_file = Path(receptor_path_str)
+                    protein_base = receptor_file.stem
+                    st.markdown(f"--- \n#### Processing Receptor for Perl Script: `{receptor_file.name}`")
 
-                        # --- Logic to determine config_to_use for this receptor ---
-                        config_to_use = None # Initialize for each receptor
-                        if not current_configs:
-                            st.error(f"No Vina configuration files fetched. Cannot dock receptor {receptor_file.name}.")
-                            continue # Skip to the next receptor
-
-                        elif len(current_configs) == 1:
-                            # If only one config file is fetched, use it for all receptors
-                            config_to_use = Path(current_configs[0])
-                            st.info(f"Using single available config: `{config_to_use.name}` for receptor `{receptor_file.name}`.")
+                    config_to_use_for_perl = None
+                    if len(current_configs) == 1:
+                        config_to_use_for_perl = Path(current_configs[0])
+                        st.info(f"Using single available config: `{config_to_use_for_perl.name}`.")
+                    else: # Multiple configs available, try to find a paired one
+                        config_to_use_for_perl = find_paired_config_for_protein(protein_base, current_configs)
+                        if config_to_use_for_perl:
+                            st.info(f"Found paired config: `{config_to_use_for_perl.name}`.")
                         else:
-                            # If multiple configs, try to find one matching the protein_base name
-                            found_matching_config = False
-                            for cfg_path_str in current_configs:
-                                cfg_file = Path(cfg_path_str)
-                                # Example matching logic (you might need to refine this):
-                                # Checks if protein_base is in config file's stem (e.g., "proteinA" in "config_proteinA" or "proteinA_settings")
-                                if protein_base in cfg_file.stem:
-                                    config_to_use = cfg_file
-                                    st.info(f"Found matching config: `{config_to_use.name}` for receptor `{receptor_file.name}`.")
-                                    found_matching_config = True
-                                    break
-                            if not found_matching_config:
-                                st.warning(f"No specific config file found for receptor `{receptor_file.name}` (e.g., containing '{protein_base}' in its name). "
-                                           f"Consider naming your config files to match receptors or selecting only one general config file if applicable.")
-                                # Option: Fallback to the first config if no match? Or skip?
-                                # For now, we will skip if no specific config is found and multiple are present.
-                                # If you want to use the first one as a default:
-                                # config_to_use = Path(current_configs[0])
-                                # st.info(f"Falling back to first available config: {config_to_use.name} for receptor {receptor_file.name}")
-                                st.error(f"Skipping receptor `{receptor_file.name}` as no specific or single default config was identified.")
-                                overall_docking_progress.progress((i + 1) / len(current_receptors)) # Update progress even on skip
-                                continue # Skip to the next receptor
+                            st.warning(f"No specifically paired config found for receptor `{receptor_file.name}` among the {len(current_configs)} available configs. Skipping this receptor for Perl script mode.")
+                            skipped_receptor_count +=1
+                            overall_docking_progress.progress((i + 1) / len(current_receptors))
+                            continue # Skip to the next receptor
+                    
+                    # temp_receptor_for_perl is copied to the CWD for the perl script
+                    temp_receptor_for_perl_path = WORKSPACE_PARENT_DIR / receptor_file.name
+                    shutil.copy(receptor_file, temp_receptor_for_perl_path)
+
+                    # The Perl script should be adapted to receive:
+                    # 1. Vina executable path
+                    # 2. Receptor path (temp_receptor_for_perl_path)
+                    # 3. Config path (config_to_use_for_perl)
+                    # 4. Protein base name (for output directory creation within Perl script)
+                    # The STDIN will be the path to ligand_list_file_for_perl
+                    cmd_perl = [
+                        "perl",
+                        str(VINA_SCREENING_PL_LOCAL_PATH.resolve()),
+                        str(VINA_PATH_LOCAL.resolve()),               # Arg 0: Vina executable
+                        str(temp_receptor_for_perl_path.resolve()),   # Arg 1: Receptor file path (in CWD)
+                        str(config_to_use_for_perl.resolve()),        # Arg 2: Specific Config file path
+                        protein_base                                  # Arg 3: Protein base name (for output subdir)
+                    ]
+                    st.code(f"echo {str(ligand_list_file_for_perl.resolve())} | {' '.join(cmd_perl)}")
+
+                    try:
+                        # The Perl script expects the *path* to the ligand list file via STDIN.
+                        process = subprocess.Popen(
+                            cmd_perl,
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, cwd=str(WORKSPACE_PARENT_DIR.resolve())
+                        )
+                        stdout_perl, stderr_perl = process.communicate(input=str(ligand_list_file_for_perl.resolve()) + "\n")
+
+                        if process.returncode == 0:
+                            st.success(f"`Vina_screening.pl` completed for `{receptor_file.name}`.")
+                        else:
+                            st.error(f"`Vina_screening.pl` failed for `{receptor_file.name}` (Return code: {process.returncode}).")
                         
-                        if not config_to_use: # Should be caught by the error above, but as a safeguard
-                            st.error(f"Config file for receptor `{receptor_file.name}` could not be determined. Skipping.")
-                            overall_docking_progress.progress((i + 1) / len(current_receptors)) # Update progress even on skip
-                            continue
-
-                        # --- End of logic to determine config_to_use ---
-
-                        # Vina_screening.pl expects receptor and potentially its specific config
-                        # to be accessible relative to its CWD (WORKSPACE_PARENT_DIR).
-                        # Python script already copies the receptor to temp_receptor_for_perl.
-                        # The Perl script now takes the *actual fetched config path* as an argument.
-
-                        temp_receptor_for_perl = WORKSPACE_PARENT_DIR / receptor_file.name
-                        shutil.copy(receptor_file, temp_receptor_for_perl)
-                        # Note: temp_config_for_perl logic (copying config to WORKSPACE_PARENT_DIR with a specific name)
-                        # is removed here because the modified Perl script takes the direct path to the fetched config.
-
-                        protein_specific_output_dir = DOCKING_OUTPUT_DIR_LOCAL / protein_base
-                        protein_specific_output_dir.mkdir(parents=True, exist_ok=True)
-                        
-                        # This is where your line 569 was, ensure config_to_use is a valid Path object here
-                        cmd_perl = [
-                            "perl",
-                            str(VINA_SCREENING_PL_LOCAL_PATH.resolve()),
-                            str(config_to_use.resolve()) # ARG[0] in Perl: Path to the specific .txt config file
-                            # If your Perl script was updated to take more args (Vina path, receptor path etc.) add them here.
-                            # For the Perl script that ONLY takes config path as ARGV[0]:
-                            # ARG1: Vina Executable - if Perl script expects it
-                            # ARG2: Receptor Path - if Perl script expects it
-                            # ARG3: Protein Base Name - if Perl script expects it for output subdirs
-                        ]
-                        st.code(f"(cat {str(ligand_list_file_for_perl.resolve())}) | {' '.join(cmd_perl)}")
-
-                        try:
-                            with open(ligand_list_file_for_perl, "r") as f_ligands:
-                                ligand_paths_content = f_ligands.read()
-
-                            process = subprocess.Popen(
-                                cmd_perl,
-                                stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                text=True,
-                                cwd=str(WORKSPACE_PARENT_DIR.resolve()) # CWD for the Perl script
-                            )
-                            stdout_perl, stderr_perl = process.communicate(input=ligand_paths_content)
-
-                            if process.returncode == 0:
-                                st.success(f"`Vina_screening.pl` completed for `{receptor_file.name}`.")
-                            else:
-                                st.error(f"`Vina_screening.pl` failed for `{receptor_file.name}` (Return code: {process.returncode}).")
+                        exp_stdout = st.expander(f"Perl script STDOUT for {receptor_file.name}", expanded=False)
+                        exp_stdout.text(stdout_perl if stdout_perl.strip() else "No standard output.")
+                        exp_stderr = st.expander(f"Perl script STDERR for {receptor_file.name}", expanded=True)
+                        exp_stderr.text(stderr_perl if stderr_perl.strip() else "No standard error output.")
                             
-                            # Make sure expanders always created to avoid issues with conditional rendering affecting keys
-                            exp_stdout = st.expander(f"Perl script STDOUT for {receptor_file.name}", expanded=False)
-                            exp_stdout.text(stdout_perl if stdout_perl.strip() else "No standard output.")
-                            
-                            exp_stderr = st.expander(f"Perl script STDERR for {receptor_file.name}", expanded=True) # Expand if errors expected
-                            exp_stderr.text(stderr_perl if stderr_perl.strip() else "No standard error output.")
-                                
-                            st.info(f"Docking outputs for `{receptor_file.name}` (if any created by Perl script) "
-                                    f"would be relative to its CWD: `{WORKSPACE_PARENT_DIR}` "
-                                    f"or inside `{protein_specific_output_dir}` if the Perl script handles that.")
+                        st.info(f"Perl script outputs for `{receptor_file.name}` should be in a subdirectory named `{protein_base}` within `{WORKSPACE_PARENT_DIR}`.")
 
-                        except Exception as e_perl:
-                            st.error(f"Error executing `Vina_screening.pl` for `{receptor_file.name}`: {e_perl}")
-                        finally:
-                            if temp_receptor_for_perl.exists():
-                                temp_receptor_for_perl.unlink(missing_ok=True)
-                            # No temp_config_for_perl to delete as we pass the direct path
-                        
-                        receptors_processed_count += 1
-                        overall_docking_progress.progress(receptors_processed_count / len(current_receptors))
-        else: # Direct Vina calls
-            st.subheader("Docking via Direct AutoDock Vina Calls")
+                    except Exception as e_perl:
+                        st.error(f"Error executing `Vina_screening.pl` for `{receptor_file.name}`: {e_perl}")
+                    finally:
+                        if temp_receptor_for_perl_path.exists():
+                            temp_receptor_for_perl_path.unlink(missing_ok=True)
+                    
+                    receptors_processed_count += 1
+                    overall_docking_progress.progress((receptors_processed_count + skipped_receptor_count) / len(current_receptors))
+                
+                if skipped_receptor_count > 0:
+                    st.warning(f"{skipped_receptor_count} receptor(s) were skipped due to no matching config file.")
+
+        else: # Direct Vina calls - This section inherently does "all proteins vs all selected configs"
+            st.subheader("Docking via Direct AutoDock Vina Calls (All selected proteins vs. All selected configs)")
             num_total_direct_jobs = len(current_receptors) * len(final_ligand_list_for_docking) * len(current_configs)
-            st.info(f"Planning {num_total_direct_jobs} individual Vina docking jobs.")
+            st.info(f"Planning {num_total_direct_jobs} individual Vina docking jobs (combinatorial).")
+            
             if num_total_direct_jobs == 0:
                 st.warning("No valid combination of receptor, ligand, and config for direct Vina calls.")
+            else:
+                job_counter = 0
+                overall_docking_progress = st.progress(0)
 
-            job_counter = 0
-            overall_docking_progress = st.progress(0)
+                for rec_path_str in current_receptors:
+                    receptor_file = Path(rec_path_str)
+                    for lig_path_str in final_ligand_list_for_docking:
+                        ligand_file = Path(lig_path_str)
+                        # Loop through ALL fetched/selected config files for each protein-ligand pair
+                        for conf_path_str in current_configs: 
+                            config_file = Path(conf_path_str)
+                            job_counter += 1
+                            st.markdown(f"--- \n**Job {job_counter}/{num_total_direct_jobs}:** "
+                                        f"`{receptor_file.name}` + `{ligand_file.name}` (Config: `{config_file.name}`)")
 
-            for rec_path_str in current_receptors:
-                receptor_file = Path(rec_path_str)
-                for lig_path_str in final_ligand_list_for_docking:
-                    ligand_file = Path(lig_path_str)
-                    for conf_path_str in current_configs:
-                        config_file = Path(conf_path_str)
-                        job_counter += 1
-                        st.markdown(f"--- \n**Job {job_counter}/{num_total_direct_jobs}:** "
-                                    f"`{receptor_file.name}` + `{ligand_file.name}` (Config: `{config_file.name}`)")
+                            output_base = f"{receptor_file.stem}_{ligand_file.stem}_{config_file.stem}" # Unique name including config
+                            output_pdbqt_docked = DOCKING_OUTPUT_DIR_LOCAL / f"{output_base}_out.pdbqt"
+                            output_log_file = DOCKING_OUTPUT_DIR_LOCAL / f"{output_base}_log.txt"
 
-                        output_base = f"{receptor_file.stem}_{ligand_file.stem}_{config_file.stem}"
-                        output_pdbqt_docked = DOCKING_OUTPUT_DIR_LOCAL / f"{output_base}_out.pdbqt"
-                        output_log_file = DOCKING_OUTPUT_DIR_LOCAL / f"{output_base}_log.txt"
+                            cmd_vina_direct = [
+                                str(VINA_PATH_LOCAL.resolve()),
+                                "--receptor", str(receptor_file.resolve()),
+                                "--ligand", str(ligand_file.resolve()),
+                                "--config", str(config_file.resolve()), # Use the current config from the loop
+                                "--out", str(output_pdbqt_docked.resolve()),
+                                "--log", str(output_log_file.resolve())
+                            ]
+                            st.code(" ".join(cmd_vina_direct))
 
-                        cmd_vina_direct = [
-                            str(VINA_PATH_LOCAL.resolve()),
-                            "--receptor", str(receptor_file.resolve()),
-                            "--ligand", str(ligand_file.resolve()),
-                            "--config", str(config_file.resolve()),
-                            "--out", str(output_pdbqt_docked.resolve())
-                        ]
-                        st.code(" ".join(cmd_vina_direct))
+                            try:
+                                vina_run_result = subprocess.run(cmd_vina_direct, capture_output=True, text=True, check=True, cwd=str(WORKSPACE_PARENT_DIR.resolve()))
+                                st.success("Vina docking job completed successfully!")
+                                with st.expander("Vina STDOUT", expanded=False):
+                                    st.text(vina_run_result.stdout if vina_run_result.stdout else "No standard output.")
+                                if vina_run_result.stderr:
+                                    with st.expander("Vina STDERR (check for warnings)", expanded=True):
+                                        st.text(vina_run_result.stderr)
+                                
+                                if output_pdbqt_docked.exists():
+                                    with open(output_pdbqt_docked, "rb") as fp:
+                                        st.download_button(label=f"Download Docked PDBQT ({output_pdbqt_docked.name})", data=fp, file_name=output_pdbqt_docked.name, mime="chemical/x-pdbqt", key=f"dl_pdbqt_{job_counter}")
+                                if output_log_file.exists():
+                                    with open(output_log_file, "r", encoding='utf-8') as fp:
+                                         st.download_button(label=f"Download Log File ({output_log_file.name})", data=fp.read(), file_name=output_log_file.name, mime="text/plain",  key=f"dl_log_{job_counter}")
 
-                        try:
-                            vina_run_result = subprocess.run(cmd_vina_direct, capture_output=True, text=True, check=True, cwd=str(WORKSPACE_PARENT_DIR.resolve()))
-                            st.success("Vina docking job completed successfully!")
-                            with st.expander("Vina STDOUT", expanded=False):
-                                st.text(vina_run_result.stdout if vina_run_result.stdout else "No standard output.")
-                            if vina_run_result.stderr:
-                                with st.expander("Vina STDERR (check for warnings)", expanded=True):
-                                    st.text(vina_run_result.stderr)
+                            except subprocess.CalledProcessError as e_vina_direct:
+                                st.error(f"Vina docking job FAILED (Return code: {e_vina_direct.returncode}).")
+                                st.error(f"Command: `{' '.join(e_vina_direct.cmd)}`")
+                                with st.expander("Vina STDOUT (on error)", expanded=True):
+                                    st.text(e_vina_direct.stdout if e_vina_direct.stdout else "No standard output.")
+                                with st.expander("Vina STDERR (on error)", expanded=True):
+                                    st.text(e_vina_direct.stderr if e_vina_direct.stderr else "No standard error output.")
+                            except Exception as e_generic:
+                                st.error(f"An unexpected error occurred during this Vina job: {e_generic}")
                             
-                            if output_pdbqt_docked.exists():
-                                with open(output_pdbqt_docked, "rb") as fp:
-                                    st.download_button(label=f"Download Docked PDBQT ({output_pdbqt_docked.name})", data=fp, file_name=output_pdbqt_docked.name, mime="chemical/x-pdbqt", key=f"dl_pdbqt_{job_counter}")
-                            if output_log_file.exists():
-                                with open(output_log_file, "r", encoding='utf-8') as fp:
-                                     st.download_button(label=f"Download Log File ({output_log_file.name})", data=fp.read(), file_name=output_log_file.name, mime="text/plain",  key=f"dl_log_{job_counter}")
-
-                        except subprocess.CalledProcessError as e_vina_direct:
-                            st.error(f"Vina docking job FAILED (Return code: {e_vina_direct.returncode}).")
-                            st.error(f"Command: `{' '.join(e_vina_direct.cmd)}`")
-                            with st.expander("Vina STDOUT (on error)", expanded=True):
-                                st.text(e_vina_direct.stdout if e_vina_direct.stdout else "No standard output.")
-                            with st.expander("Vina STDERR (on error)", expanded=True):
-                                st.text(e_vina_direct.stderr if e_vina_direct.stderr else "No standard error output.")
-                        except Exception as e_generic:
-                            st.error(f"An unexpected error occurred during this Vina job: {e_generic}")
-                        
-                        if num_total_direct_jobs > 0 :
-                            overall_docking_progress.progress(job_counter / num_total_direct_jobs)
+                            if num_total_direct_jobs > 0 :
+                                overall_docking_progress.progress(job_counter / num_total_direct_jobs)
         
         st.balloons()
         st.header("🏁 Docking Run Finished 🏁")
-        st.info(f"All docking outputs can be found in the `{DOCKING_OUTPUT_DIR_LOCAL}` directory (relative to the app's root on the server). You may need to use other tools or app features (if added) to browse/manage these files directly on the server.")
+        st.info(f"All docking outputs can be found in the `{DOCKING_OUTPUT_DIR_LOCAL}` directory (relative to the app's root on the server).")
 
 st.markdown("---")
 st.caption(f"Docking App v{APP_VERSION} | Developed with Streamlit. AutoDock Vina for docking simulations.")
