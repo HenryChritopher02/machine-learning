@@ -200,7 +200,6 @@ def parse_vina_log(log_file_path: str) -> float | None:
                         except ValueError: continue
             return None
     except FileNotFoundError:
-        # This warning is kept as it's specific to the parsing function if a file is expected but not found
         st.warning(f"Log file not found during parsing: {log_file_path}")
         return None
     except Exception as e:
@@ -215,22 +214,29 @@ def parse_score_from_pdbqt(pdbqt_file_path: str) -> float | None:
     try:
         with open(pdbqt_file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-        if len(lines) > 1:
-            line = lines[1]
-            if "REMARK VINA RESULT:" in line:
+        
+        # Iterate through the first ~20 lines to find the VINA RESULT remark
+        for i, line in enumerate(lines[:20]): # Check first 20 lines
+            line = line.strip()
+            if line.startswith("REMARK VINA RESULT:"):
                 parts = line.split(':')
                 if len(parts) > 1:
                     score_part = parts[1].strip().split()
                     if score_part:
-                        return float(score_part[0])
-        # This warning is kept as it's specific to the parsing function if format is wrong
-        st.warning(f"Could not find VINA RESULT line in expected format in {Path(pdbqt_file_path).name}")
+                        try:
+                            return float(score_part[0])
+                        except ValueError:
+                            st.warning(f"Could not convert score part '{score_part[0]}' to float in {Path(pdbqt_file_path).name} on line {i+1}")
+                            return None # Failed to convert score part
+                st.warning(f"Found 'REMARK VINA RESULT:' but could not parse score in {Path(pdbqt_file_path).name} on line {i+1}")
+                return None # Found remark but format was unexpected after colon
+        
+        # If loop finishes without finding the specific remark
+        st.warning(f"Could not find 'REMARK VINA RESULT:' in the first 20 lines of {Path(pdbqt_file_path).name}")
         return None
+        
     except FileNotFoundError:
         st.warning(f"PDBQT output file not found for score parsing: {Path(pdbqt_file_path).name}")
-        return None
-    except ValueError:
-        st.warning(f"Could not parse score from PDBQT file: {Path(pdbqt_file_path).name} - numeric conversion error.")
         return None
     except Exception as e:
         st.warning(f"Error parsing PDBQT file {Path(pdbqt_file_path).name}: {e}")
