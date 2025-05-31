@@ -231,15 +231,18 @@ def convert_df_to_csv(df):
 
 # --- App Pages/Procedures ---
 def display_ensemble_docking_procedure():
-    st.header(f"Ensemble AutoDock Vina Docking (App v{APP_VERSION})")
+    st.header(f"Ensemble AutoDock Vina Docking (App v{APP_VERSION})") # APP_VERSION should be defined
     st.markdown("---")
     initialize_directories()
 
-    if 'prepared_ligand_details_list' not in st.session_state: st.session_state.prepared_ligand_details_list = []
-    if 'docking_run_outputs' not in st.session_state: st.session_state.docking_run_outputs = []
+    # Initialize session state for this procedure if not already present
+    if 'prepared_ligand_details_list' not in st.session_state:
+        st.session_state.prepared_ligand_details_list = []
+    if 'docking_run_outputs' not in st.session_state:
+        st.session_state.docking_run_outputs = []
 
     # --- Sidebar Sections for THIS procedure ---
-    with st.sidebar: # Keep subsequent sidebar elements grouped for this "page"
+    with st.sidebar:
         st.header("Docking Setup")
         st.caption("Core Components:")
         # These are checked when this page is loaded, errors will be shown.
@@ -249,7 +252,7 @@ def display_ensemble_docking_procedure():
         if mk_prepare_ligand_py_ok: make_file_executable(str(MK_PREPARE_LIGAND_PY_LOCAL_PATH))
         vina_screening_pl_ok = check_script_exists(VINA_SCREENING_PL_LOCAL_PATH, "Vina_screening.pl", is_critical=False)
         if vina_screening_pl_ok: make_file_executable(str(VINA_SCREENING_PL_LOCAL_PATH))
-        vina_ready = check_vina_binary(show_success=True) # Show Vina status clearly
+        vina_ready = check_vina_binary(show_success=True)
         st.markdown("---")
 
         st.subheader("Receptor(s)")
@@ -259,9 +262,9 @@ def display_ensemble_docking_procedure():
         )
         receptor_dir_in_repo = f"{GH_ENSEMBLE_DOCKING_ROOT_PATH}/{RECEPTOR_SUBDIR_GH.strip('/')}"
         if receptor_fetch_method == "Fetch ALL .pdbqt from GitHub":
-            if st.button("Fetch All Receptors", key="fetch_all_receptors_auto_dockpage", help=f"Fetches all .pdbqt from .../{receptor_dir_in_repo}"):
+            if st.button("Fetch All Receptors", key="fetch_all_receptors_auto_dockpage", help=f"Fetches all .pdbqt files from .../{receptor_dir_in_repo}"):
                 st.session_state.fetched_receptor_paths = [] 
-                with st.spinner(f"Listing .pdbqt files..."):
+                with st.spinner(f"Listing .pdbqt files in GitHub dir..."):
                     receptor_filenames = list_files_from_github_repo_dir(GH_OWNER, GH_REPO, receptor_dir_in_repo, GH_BRANCH, ".pdbqt")
                 if receptor_filenames:
                     temp_paths = []
@@ -272,7 +275,7 @@ def display_ensemble_docking_procedure():
                             if path: temp_paths.append(path)
                     if temp_paths: st.success(f"Fetched {len(temp_paths)} receptors."); st.session_state.fetched_receptor_paths = temp_paths
                     else: st.error("No receptors downloaded.")
-                else: st.warning(f"No .pdbqt files found in GitHub dir.")
+                else: st.warning(f"No .pdbqt files found in GitHub directory.")
         elif receptor_fetch_method == "Specify Filenames from GitHub":
             receptor_names_input = st.text_area("Receptor PDBQT Filenames (one per line):", key="receptor_filenames_manual_dockpage", help=f"From .../{receptor_dir_in_repo}/")
             if st.button("Fetch Specified Receptors", key="fetch_specified_receptors_dockpage"):
@@ -334,20 +337,15 @@ def display_ensemble_docking_procedure():
             for p_str in st.session_state.fetched_config_paths: exp.caption(f"- {Path(p_str).name}")
         st.markdown("---")
 
-
     # --- Main Page Content for Ensemble Docking ---
     st.subheader("🔬 Ligand Input & Preparation")
-    # ... (Ligand input UI as before, ensure it updates st.session_state.prepared_ligand_details_list) ...
-    # (Make sure SCRUB_PY_LOCAL_PATH and MK_PREPARE_LIGAND_PY_LOCAL_PATH are used in calls to convert_... functions)
-    # (Example for SMILES String, other inputs should follow similar pattern of updating session state)
-
     ligand_input_method = st.radio(
         "Choose ligand input method:",
         ("SMILES String", "SMILES File (.txt)", "PDBQT File(s)", "Other Ligand File(s)", "ZIP Archive"),
         key="ligand_method_radio_mainpage", horizontal=True
     )
     
-    # Temporary list for this preparation step, to be merged into session_state
+    # This list will temporarily hold details of ligands prepared in the current action
     current_preparation_ligand_details = []
 
     if ligand_input_method in ["SMILES String", "SMILES File (.txt)"]:
@@ -362,38 +360,93 @@ def display_ensemble_docking_procedure():
         use_inchikey = st.checkbox("Input is InChIKey", value=False, key="use_inchikey_main")
         lig_name = st.text_input("Ligand Base Name:", value="lig_smiles", key="lig_name_main")
         if st.button("Prepare This SMILES Ligand", key="prep_smiles_main"):
-            current_preparation_ligand_details = [] # Reset for single prep
             if inchikey_or_smiles_val and lig_name:
-                smiles = inchikey_or_smiles_val
+                actual_smiles = inchikey_or_smiles_val
                 if use_inchikey:
-                    with st.spinner("Fetching SMILES..."): smiles = get_smiles_from_pubchem_inchikey(inchikey_or_smiles_val)
-                    if not smiles: st.error("Could not get SMILES from InChIKey.")
-                if smiles and scrub_py_ok and mk_prepare_ligand_py_ok:
-                    detail = convert_smiles_to_pdbqt(smiles, lig_name, LIGAND_PREP_DIR_LOCAL, g_ph_val, g_skip_tautomer, g_skip_acidbase, SCRUB_PY_LOCAL_PATH, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
+                    with st.spinner("Fetching SMILES..."):
+                        fetched_s = get_smiles_from_pubchem_inchikey(inchikey_or_smiles_val)
+                    if fetched_s: actual_smiles = fetched_s; st.info(f"Fetched SMILES: {actual_smiles}")
+                    else: st.error("Could not get SMILES from InChIKey."); actual_smiles = None
+                
+                if actual_smiles and scrub_py_ok and mk_prepare_ligand_py_ok:
+                    detail = convert_smiles_to_pdbqt(actual_smiles, lig_name, LIGAND_PREP_DIR_LOCAL, g_ph_val, g_skip_tautomer, g_skip_acidbase, SCRUB_PY_LOCAL_PATH, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
                     if detail: current_preparation_ligand_details.append(detail); st.success(f"Prepared: {Path(detail['pdbqt_path']).name}")
                 elif not (scrub_py_ok and mk_prepare_ligand_py_ok): st.error("Prep scripts missing.")
             else: st.warning("Provide SMILES/InChIKey and name.")
-            st.session_state.prepared_ligand_details_list = current_preparation_ligand_details # Update session state
+            st.session_state.prepared_ligand_details_list = current_preparation_ligand_details
 
-    # Add other ligand input methods (SMILES File, PDBQT, Other, ZIP) similarly,
-    # ensuring they append to/set current_preparation_ligand_details and then update
-    # st.session_state.prepared_ligand_details_list upon their respective "Prepare/Process" button clicks.
-    # For brevity, I'm omitting the full repeat of these UI sections, but they should follow the pattern above.
-    # Ensure each "Prepare/Process" button for ligands updates st.session_state.prepared_ligand_details_list.
-    
+    elif ligand_input_method == "SMILES File (.txt)": # <<< ADDED FILE UPLOADER AND LOGIC
+        uploaded_smiles_file = st.file_uploader("Upload .txt (one SMILES per line):", type="txt", key="smiles_file_uploader_main")
+        if uploaded_smiles_file and st.button("Prepare Ligands from SMILES File", key="prep_smiles_file_main"):
+            smiles_list = [line.strip() for line in uploaded_smiles_file.read().decode().splitlines() if line.strip()]
+            if not smiles_list: st.warning("No SMILES found in file.")
+            elif not (scrub_py_ok and mk_prepare_ligand_py_ok): st.error("Ligand prep scripts missing.")
+            else:
+                st.info(f"Found {len(smiles_list)} SMILES. Preparing...")
+                progress_bar = st.progress(0)
+                for i, smiles_str in enumerate(smiles_list):
+                    lig_name = f"lig_from_file_{i+1}"
+                    detail = convert_smiles_to_pdbqt(smiles_str, lig_name, LIGAND_PREP_DIR_LOCAL, g_ph_val, g_skip_tautomer, g_skip_acidbase, SCRUB_PY_LOCAL_PATH, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
+                    if detail: current_preparation_ligand_details.append(detail)
+                    progress_bar.progress((i + 1) / len(smiles_list))
+                st.success(f"Prepared {len(current_preparation_ligand_details)} PDBQTs from SMILES file.")
+            st.session_state.prepared_ligand_details_list = current_preparation_ligand_details
+
     elif ligand_input_method == "PDBQT File(s)":
         uploaded_pdbqt_files = st.file_uploader("Upload PDBQT ligand(s):", type="pdbqt", accept_multiple_files=True, key="pdbqt_uploader_main")
-        if uploaded_pdbqt_files: # This action directly updates session state
+        if uploaded_pdbqt_files:
             temp_lig_details = []
             for up_file in uploaded_pdbqt_files:
                 dest_path = LIGAND_PREP_DIR_LOCAL / up_file.name
                 with open(dest_path, "wb") as f: f.write(up_file.getbuffer())
                 temp_lig_details.append({"id": up_file.name, "pdbqt_path": str(dest_path), "base_name": Path(up_file.name).stem})
-            st.session_state.prepared_ligand_details_list = temp_lig_details
+            st.session_state.prepared_ligand_details_list = temp_lig_details # Overwrite with current uploads
             st.info(f"Using {len(st.session_state.prepared_ligand_details_list)} uploaded PDBQT file(s).")
-    # ... (Include other ligand input methods: SMILES File, Other File, ZIP - ensure they update session_state.prepared_ligand_details_list)
 
+    elif ligand_input_method == "Other Ligand File(s)": # <<< ADDED FILE UPLOADER AND LOGIC
+        uploaded_other_files = st.file_uploader("Upload other format ligand(s) (e.g. SDF, MOL2):", accept_multiple_files=True, key="other_lig_uploader_main")
+        if uploaded_other_files and st.button("Convert Uploaded File(s) to PDBQT", key="convert_other_main"):
+            if not mk_prepare_ligand_py_ok: st.error("mk_prepare_ligand.py script missing.")
+            else:
+                st.info(f"Processing {len(uploaded_other_files)} file(s) for conversion...")
+                progress_bar = st.progress(0)
+                for i, up_file in enumerate(uploaded_other_files):
+                    # Save to a temporary spot within the workspace for conversion
+                    temp_save_path = LIGAND_UPLOAD_TEMP_DIR / up_file.name 
+                    temp_save_path.parent.mkdir(parents=True, exist_ok=True) # Ensure dir exists
+                    with open(temp_save_path, "wb") as f: f.write(up_file.getbuffer())
+                    
+                    detail = convert_ligand_file_to_pdbqt(temp_save_path, up_file.name, LIGAND_PREP_DIR_LOCAL, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
+                    if detail: current_preparation_ligand_details.append(detail)
+                    progress_bar.progress((i + 1) / len(uploaded_other_files))
+                st.success(f"Prepared {len(current_preparation_ligand_details)} PDBQTs from other files.")
+            st.session_state.prepared_ligand_details_list = current_preparation_ligand_details
 
+    elif ligand_input_method == "ZIP Archive": # <<< ADDED FILE UPLOADER AND LOGIC
+        uploaded_zip_file = st.file_uploader("Upload ZIP of ligand files:", type="zip", key="zip_uploader_main")
+        if uploaded_zip_file and st.button("Process Ligands from ZIP", key="process_zip_main"):
+            shutil.rmtree(ZIP_EXTRACT_DIR_LOCAL, ignore_errors=True)
+            ZIP_EXTRACT_DIR_LOCAL.mkdir(exist_ok=True)
+            with zipfile.ZipFile(uploaded_zip_file, 'r') as zip_ref: zip_ref.extractall(ZIP_EXTRACT_DIR_LOCAL)
+            st.info(f"Extracted ZIP to `{ZIP_EXTRACT_DIR_LOCAL}`.")
+            files_in_zip = list(p for p in Path(ZIP_EXTRACT_DIR_LOCAL).rglob("*") if p.is_file())
+            if not files_in_zip: st.warning("No files in ZIP.")
+            else:
+                st.info(f"Found {len(files_in_zip)} file(s). Processing...")
+                progress_bar = st.progress(0)
+                for i, item_path in enumerate(files_in_zip):
+                    if item_path.suffix.lower() == ".pdbqt":
+                        dest_path = LIGAND_PREP_DIR_LOCAL / item_path.name
+                        shutil.copy(item_path, dest_path)
+                        current_preparation_ligand_details.append({"id": item_path.name, "pdbqt_path": str(dest_path), "base_name": item_path.stem})
+                    elif mk_prepare_ligand_py_ok:
+                        detail = convert_ligand_file_to_pdbqt(item_path, item_path.name, LIGAND_PREP_DIR_LOCAL, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
+                        if detail: current_preparation_ligand_details.append(detail)
+                    else: st.warning(f"Skipping {item_path.name} (mk_prepare_ligand.py missing).")
+                    progress_bar.progress((i + 1) / len(files_in_zip))
+                st.success(f"Prepared {len(current_preparation_ligand_details)} PDBQTs from ZIP.")
+            st.session_state.prepared_ligand_details_list = current_preparation_ligand_details
+    
     if st.session_state.prepared_ligand_details_list:
         exp_lig = st.expander(f"**{len(st.session_state.prepared_ligand_details_list)} Ligand(s) Ready for Docking**", expanded=True)
         for lig_info in st.session_state.prepared_ligand_details_list:
@@ -417,19 +470,17 @@ def display_ensemble_docking_procedure():
             use_vina_screening_perl = st.checkbox("Use `Vina_screening.pl` (Strict Protein-Config Pairing)?", value=True, key="use_perl_dockpage")
         
         if st.button("Start Docking Run", key="start_docking_main_btn_dockpage", type="primary"):
-            st.session_state.docking_run_outputs = [] # Reset results
+            st.session_state.docking_run_outputs = [] 
             DOCKING_OUTPUT_DIR_LOCAL.mkdir(parents=True, exist_ok=True)
 
             if use_vina_screening_perl:
                 st.markdown("##### Docking via `Vina_screening.pl` (Strict Protein-Config Pairing)")
-                # ... (Perl script docking logic as in v1.4.1, ensure it populates st.session_state.docking_run_outputs)
-                # Make sure to iterate through final_ligand_details_list to get ligand_id for results
                 if not (vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists() and os.access(VINA_SCREENING_PL_LOCAL_PATH, os.X_OK)):
                     st.error("Local `Vina_screening.pl` script not available or not executable.")
                 else:
                     ligand_list_file_for_perl = WORKSPACE_PARENT_DIR / "ligands_for_perl.txt"
                     with open(ligand_list_file_for_perl, "w") as f:
-                        for lig_detail in final_ligand_details_list: # Use details list
+                        for lig_detail in final_ligand_details_list:
                             f.write(str(Path(lig_detail['pdbqt_path']).resolve()) + "\n")
                     
                     overall_docking_progress = st.progress(0)
@@ -454,34 +505,21 @@ def display_ensemble_docking_procedure():
                             proc = subprocess.Popen(cmd_perl, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=str(WORKSPACE_PARENT_DIR.resolve()))
                             stdout_p, stderr_p = proc.communicate(input=ligand_stdin)
                             if proc.returncode != 0: st.error(f"Perl script failed for `{protein_base}` (RC: {proc.returncode}).")
-                            # else: st.success(f"Perl script done for `{protein_base}`.")
-                            # HIDE STDERR for successful Perl script runs unless it contains "error" or "fail"
+                            
                             if stdout_p.strip():
                                 with st.expander(f"Perl STDOUT for {protein_base}", expanded=False): st.text(stdout_p)
-                            if stderr_p.strip() and (proc.returncode != 0 or "error" in stderr_p.lower() or "fail" in stderr_p.lower()):
+                            if stderr_p.strip() and proc.returncode != 0: # Only show STDERR if error
                                 with st.expander(f"Perl STDERR for {protein_base}", expanded=True): st.text(stderr_p)
                             
-                            # Parse outputs from Perl script's output directory
                             perl_protein_out_dir = WORKSPACE_PARENT_DIR / protein_base
                             if perl_protein_out_dir.is_dir():
                                 for lig_detail in final_ligand_details_list:
-                                    # Construct expected log file name (adjust if Perl script names them differently)
-                                    # Example: ligandA_proteinX_out.pdbqt -> ligandA_proteinX_log.txt
-                                    # Or from Perl script: "${ligand_basename}_${protein_base_name}_log.txt"
                                     log_fn = f"{lig_detail['base_name']}_{protein_base}_log.txt" 
                                     expected_log_file = perl_protein_out_dir / log_fn
-                                    if not expected_log_file.exists(): # Try without protein base if first fails
-                                        log_fn_alt = f"{lig_detail['base_name']}_log.txt"
-                                        expected_log_file = perl_protein_out_dir / log_fn_alt
-                                    
+                                    if not expected_log_file.exists(): expected_log_file = perl_protein_out_dir / f"{lig_detail['base_name']}_log.txt"
                                     if expected_log_file.exists():
                                         score = parse_vina_log(str(expected_log_file))
-                                        if score is not None:
-                                            st.session_state.docking_run_outputs.append({
-                                                "ligand_id": lig_detail["id"], "protein_stem": protein_base,
-                                                "config_stem": config_to_use.stem, "score": score
-                                            })
-                                    # else: st.caption(f"Log not found: {expected_log_file}") # Can be verbose
+                                        if score is not None: st.session_state.docking_run_outputs.append({"ligand_id": lig_detail["id"], "protein_stem": protein_base, "config_stem": config_to_use.stem, "score": score})
                             else: st.warning(f"Perl output dir not found: {perl_protein_out_dir}")
                         except Exception as e_p: st.error(f"Error running Perl script for `{protein_base}`: {e_p}")
                         finally: 
@@ -489,9 +527,7 @@ def display_ensemble_docking_procedure():
                         receptors_processed_count += 1
                         overall_docking_progress.progress((receptors_processed_count + skipped_receptor_count) / len(current_receptors))
                     if skipped_receptor_count > 0: st.warning(f"{skipped_receptor_count} receptor(s) skipped.")
-
-
-            else: # Direct Vina calls (Strict Protein-Config Pairing)
+            else: # Direct Vina calls
                 st.markdown("##### Docking via Direct Vina Calls (Strict Protein-Config Pairing)")
                 planned_docking_jobs = []
                 skipped_receptors_direct_mode = set()
@@ -522,7 +558,7 @@ def display_ensemble_docking_procedure():
                         output_log_file = DOCKING_OUTPUT_DIR_LOCAL / f"{output_base}_log.txt"
                         cmd_vina = [str(VINA_PATH_LOCAL.resolve()), "--receptor", str(receptor_file.resolve()),
                                       "--ligand", str(ligand_file.resolve()), "--config", str(config_file.resolve()),
-                                      "--out", str(output_pdbqt_docked.resolve())]
+                                      "--out", str(output_pdbqt_docked.resolve()), "--log", str(output_log_file.resolve())]
                         try:
                             res_vina = subprocess.run(cmd_vina, capture_output=True, text=True, check=True, cwd=str(WORKSPACE_PARENT_DIR.resolve()))
                             st.success("Vina job OK!")
@@ -541,17 +577,16 @@ def display_ensemble_docking_procedure():
                         except subprocess.CalledProcessError as e_vina:
                             st.error(f"Vina job FAILED (RC: {e_vina.returncode}).")
                             with st.expander("Vina Error Details", expanded=True):
-                                st.error(f"Cmd: `{' '.join(e_vina.cmd)}`")
-                                st.text("STDOUT:\n" + (e_vina.stdout.strip() or "No STDOUT."))
-                                st.text("STDERR:\n" + (e_vina.stderr.strip() or "No STDERR.")) # Show STDERR on Vina error
+                                st.error(f"Cmd: `{' '.join(e_vina.cmd)}`"); st.text("STDOUT:\n" + (e_vina.stdout.strip() or "No STDOUT.")); st.text("STDERR:\n" + (e_vina.stderr.strip() or "No STDERR."))
                         except Exception as e_gen: st.error(f"Unexpected error in Vina job: {e_gen}")
                         if num_total_direct_jobs > 0: overall_docking_progress.progress(job_counter / num_total_direct_jobs)
             
+            # --- Results Summary Table ---
             if st.session_state.docking_run_outputs:
                 st.markdown("---"); st.subheader("📊 Docking Results Summary")
                 try:
                     df_detailed = pd.DataFrame(st.session_state.docking_run_outputs)
-                    if not df_detailed.empty:
+                    if not df_detailed.empty and 'ligand_id' in df_detailed.columns and 'score' in df_detailed.columns:
                         best_score_indices = df_detailed.loc[df_detailed.groupby('ligand_id')['score'].idxmin()]
                         summary_data = [{"Input SMILES/Ligand ID": row["ligand_id"],
                                          "Best Docking Score (kcal/mol)": row["score"],
@@ -561,12 +596,14 @@ def display_ensemble_docking_procedure():
                         st.dataframe(df_summary.set_index("Input SMILES/Ligand ID"))
                         csv_summary = convert_df_to_csv(df_summary)
                         st.download_button("Download Summary (CSV)", csv_summary, "docking_summary.csv", "text/csv", key="dl_summary_csv")
-                    else: st.info("No docking scores were successfully parsed to generate a summary.")
+                    elif not df_detailed.empty:
+                        st.warning("Could not generate best score summary (missing 'ligand_id' or 'score' columns in detailed results).")
+                        st.dataframe(df_detailed) # Show raw detailed results instead
+                    else: st.info("No docking scores were successfully parsed/recorded.")
                 except Exception as e_df:
                     st.error(f"Error generating summary table: {e_df}")
                     st.caption("Raw results (first 5):"); st.json(st.session_state.docking_run_outputs[:5])
-            else:
-                st.info("No docking outputs recorded to summarize.")
+            else: st.info("No docking outputs recorded to summarize.")
             st.balloons()
             st.header("🏁 Docking Run Finished 🏁")
             st.caption(f"Outputs, if any, are in `{DOCKING_OUTPUT_DIR_LOCAL}` or `{WORKSPACE_PARENT_DIR}` subdirectories.")
@@ -574,20 +611,45 @@ def display_ensemble_docking_procedure():
 def display_about_page():
     st.header("About This Application")
     st.markdown(f"**Ensemble AutoDock Vina App - v{APP_VERSION}**")
-    # ... (rest of your about content)
+    st.markdown("""
+    This application facilitates molecular docking simulations using AutoDock Vina, 
+    allowing for ensemble docking approaches.
+
+    **Features:**
+    - Preparation of ligands from SMILES strings or various file formats.
+    - Docking against one or multiple receptor structures.
+    - Utilization of specific or multiple Vina configuration files.
+    - Options for using a Perl-based screening script or direct Vina calls.
+    - Summarization of best docking scores.
+
+    **Instructions:**
+    1.  **Setup (Sidebar):** Ensure Vina & helper scripts are found. Fetch Receptors & Configs.
+    2.  **Ligand Input (Main Page):** Provide SMILES or upload files. Click "Prepare...".
+    3.  **Docking (Main Page):** Choose mode & click "Start Docking Run".
+    4.  **Results (Main Page):** Summary table will appear. Download links for outputs.
+
+    **Repository Structure:**
+    - `your_app_root/`
+        - `streamlit_app.py` (this file)
+        - `ensemble_docking/`
+            - `ligand_preprocessing/scrub.py` (modified for `from molscrub import Scrub`)
+            - `ligand_preprocessing/mk_prepare_ligand.py`
+            - `Vina_screening.pl` (adapted for arguments)
+        - `vina/vina_1.2.5_linux_x86_64` (executable)
+        - `requirements.txt` (e.g., `streamlit`, `requests`, `pandas`, `molscrub`)
+        - `packages.txt` (if using Perl, add `perl`)
+    """)
 
 # --- Main App Execution Logic ---
 def main():
-    # Initialize directories once at the start if not procedure-specific
-    # initialize_directories() # Already called within display_ensemble_docking_procedure
-
-    st.sidebar.image("https://raw.githubusercontent.com/HenryChritopher02/bace1/main/logo.png", width=100)
+    st.sidebar.image("https://raw.githubusercontent.com/HenryChritopher02/bace1/main/logo.png", width=100) # Optional
     st.sidebar.title("Docking Suite")
     
     app_mode = st.sidebar.radio(
         "Select Procedure:",
         ("Ensemble Docking", "About"),
-        key="app_mode_selector_main"
+        key="app_mode_selector_main",
+        horizontal=True, label_visibility="collapsed"
     )
     st.sidebar.markdown("---")
 
