@@ -12,7 +12,6 @@ import pandas as pd
 
 APP_VERSION = "1.2.5"
 
-
 BASE_GITHUB_URL_FOR_DATA = "https://raw.githubusercontent.com/HenryChritopher02/bace1/main/ensemble-docking/"
 GH_API_BASE_URL = "https://api.github.com/repos/"
 GH_OWNER = "HenryChritopher02"
@@ -207,12 +206,7 @@ def parse_vina_log(log_file_path: str) -> float | None:
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-
 def parse_score_from_pdbqt(pdbqt_file_path: str) -> float | None:
-    """
-    Parses the docking score from a Vina PDBQT output file.
-    The score is expected on the second line, e.g., "REMARK VINA RESULT: -7.5 ...".
-    """
     try:
         with open(pdbqt_file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
@@ -478,13 +472,11 @@ def display_ensemble_docking_procedure():
                 if current_preparation_ligand_details:
                     st.session_state.prepared_ligand_details_list = current_preparation_ligand_details
 
-
     if st.session_state.get('prepared_ligand_details_list', []):
         exp_lig = st.expander(f"**{len(st.session_state.prepared_ligand_details_list)} Ligand(s) Ready for Docking**", expanded=True)
         for lig_info in st.session_state.prepared_ligand_details_list:
             exp_lig.caption(f"- ID: {lig_info.get('id', 'N/A')}, Base Name: {lig_info.get('base_name', 'N/A')}, File: `{Path(lig_info.get('pdbqt_path', '')).name}`")
     st.markdown("---")
-
 
     st.subheader("🚀 Docking Execution")
     final_ligand_details_list = st.session_state.get('prepared_ligand_details_list', [])
@@ -603,8 +595,7 @@ def display_ensemble_docking_procedure():
 
                         output_base_name = f"{lig_info['base_name']}_{receptor_file.stem}_{config_file.stem}"
                         output_pdbqt_docked = DOCKING_OUTPUT_DIR_LOCAL / f"{output_base_name}_out.pdbqt"
-                        output_log_file = DOCKING_OUTPUT_DIR_LOCAL / f"{output_base_name}_log.txt"
-
+                        
                         cmd_vina = [str(VINA_PATH_LOCAL.resolve()), "--receptor", str(receptor_file.resolve()),
                                     "--ligand", str(ligand_file.resolve()), "--config", str(config_file.resolve()),
                                     "--out", str(output_pdbqt_docked.resolve())]
@@ -628,12 +619,8 @@ def display_ensemble_docking_procedure():
                             else:
                                 st.warning(f"Could not parse score from output PDBQT: {output_pdbqt_docked.name}")
 
-
                             if output_pdbqt_docked.exists():
                                 with open(output_pdbqt_docked, "rb") as fp: st.download_button(f"DL Docked PDBQT", fp, output_pdbqt_docked.name, "application/octet-stream", key=f"dl_pdbqt_{job_counter}")
-                            if output_log_file.exists():
-                                with open(output_log_file, "r", encoding='utf-8') as fp_log_content:
-                                     st.download_button(f"DL Log", fp_log_content.read(), output_log_file.name, "text/plain",  key=f"dl_log_{job_counter}")
 
                         except subprocess.CalledProcessError as e_vina:
                             st.error(f"Vina job FAILED (RC: {e_vina.returncode}).")
@@ -643,35 +630,45 @@ def display_ensemble_docking_procedure():
                         if num_total_direct_jobs > 0: overall_docking_progress.progress(job_counter / num_total_direct_jobs)
 
             if st.session_state.docking_run_outputs:
-                st.markdown("---"); st.subheader("📊 Docking Results Summary (All Scores, Sorted)")
+                st.markdown("---"); st.subheader("📊 Docking Results Summary")
                 try:
-                    sorted_results = sorted(
-                        st.session_state.docking_run_outputs,
-                        key=lambda x: x.get('score', float('inf')) if isinstance(x.get('score'), (int, float)) else float('inf')
-                    )
+                    if not st.session_state.docking_run_outputs:
+                        st.info("No docking results to summarize.")
+                    else:
+                        df_flat = pd.DataFrame(st.session_state.docking_run_outputs)
+                        
+                        df_flat['score'] = pd.to_numeric(df_flat['score'], errors='coerce')
+                        
+                        df_flat['Protein-Config'] = df_flat['protein_stem'] + '_' + df_flat['config_stem']
+                        
+                        df_pivot = df_flat.pivot_table(
+                            index=['ligand_id', 'ligand_base_name'],
+                            columns='Protein-Config',
+                            values='score',
+                            aggfunc='min'
+                        )
+                        
+                        df_summary = df_pivot.reset_index()
+                        
+                        new_column_names = {'ligand_id': 'Ligand ID / SMILES', 'ligand_base_name': 'Ligand Base Name'}
+                        for col in df_pivot.columns:
+                            new_column_names[col] = f"{col}_Score (kcal/mol)"
+                        df_summary = df_summary.rename(columns=new_column_names)
 
-                    if sorted_results:
-                        summary_data_for_df = []
-                        for res in sorted_results:
-                            summary_data_for_df.append({
-                                "Ligand ID / SMILES": res.get("ligand_id"),
-                                "Ligand Base Name": res.get("ligand_base_name"),
-                                "Protein": res.get("protein_stem"),
-                                "Config": res.get("config_stem"),
-                                "Score (kcal/mol)": f"{res.get('score'):.3f}" if isinstance(res.get('score'), (int, float)) else "N/A"
-                            })
-                        df_summary = pd.DataFrame(summary_data_for_df)
+                        for col_name in df_summary.columns:
+                            if col_name.endswith("_Score (kcal/mol)"):
+                                df_summary[col_name] = df_summary[col_name].apply(lambda x: f"{x:.3f}" if pd.notnull(x) else "N/A")
+                        
                         st.dataframe(df_summary)
                         csv_summary = convert_df_to_csv(df_summary)
                         st.download_button(
-                            "Download All Sorted Scores (CSV)",
+                            "Download Summary (CSV)",
                             csv_summary,
-                            "docking_all_sorted_scores.csv",
+                            "docking_summary_per_ligand.csv",
                             "text/csv",
-                            key="dl_all_sorted_scores_csv"
+                            key="dl_summary_per_ligand_csv"
                         )
-                    else:
-                        st.info("No valid docking scores were parsed or recorded to summarize.")
+
                 except Exception as e_df:
                     st.error(f"Error generating results summary table: {e_df}")
                     st.caption("Raw results data (first 5 if available):")
@@ -681,7 +678,6 @@ def display_ensemble_docking_procedure():
             st.balloons()
             st.header("🏁 Docking Run Finished 🏁")
             st.caption(f"Docked PDBQTs and Logs in `{DOCKING_OUTPUT_DIR_LOCAL.name}/`. Perl script outputs in `{WORKSPACE_PARENT_DIR.name}/<protein_base_name>/`.")
-
 
 def display_about_page():
     st.header("About This Application")
@@ -694,7 +690,7 @@ def display_about_page():
     - Docking against one or multiple receptor structures.
     - Utilization of specific or multiple Vina configuration files.
     - Options for using a Perl-based screening script or direct Vina calls.
-    - Summarization of all docking scores, sorted by best result.
+    - Summarization of best docking scores per ligand across different protein-config pairs.
     **Repository Structure:** (Place these in your app's GitHub repo)
     - `your_app_root/`
         - `streamlit_app.py` (this file)
