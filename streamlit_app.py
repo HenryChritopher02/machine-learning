@@ -558,7 +558,7 @@ def display_ensemble_docking_procedure():
                         output_log_file = DOCKING_OUTPUT_DIR_LOCAL / f"{output_base}_log.txt"
                         cmd_vina = [str(VINA_PATH_LOCAL.resolve()), "--receptor", str(receptor_file.resolve()),
                                       "--ligand", str(ligand_file.resolve()), "--config", str(config_file.resolve()),
-                                      "--out", str(output_pdbqt_docked.resolve()), "--log", str(output_log_file.resolve())]
+                                      "--out", str(output_pdbqt_docked.resolve())]
                         try:
                             res_vina = subprocess.run(cmd_vina, capture_output=True, text=True, check=True, cwd=str(WORKSPACE_PARENT_DIR.resolve()))
                             st.success("Vina job OK!")
