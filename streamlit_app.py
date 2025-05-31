@@ -493,9 +493,17 @@ def display_ensemble_docking_procedure():
                                     str(VINA_PATH_LOCAL.resolve()), str(temp_receptor_path.resolve()),
                                     str(config_to_use.resolve()), protein_base]
                         try:
-                            with open(ligand_list_file_for_perl, "r") as f_ligs: ligand_stdin = f_ligs.read()
-                            proc = subprocess.Popen(cmd_perl, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=str(WORKSPACE_PARENT_DIR.resolve()))
-                            stdout_p, stderr_p = proc.communicate(input=ligand_stdin) # Pass actual content
+                            # The Perl script expects the *path* to the ligand list file via STDIN.
+                            # Construct the string that is the path to the ligand list file, ending with a newline.
+                            input_path_for_perl_stdin = str(ligand_list_file_for_perl.resolve()) + "\n" # <--- CORRECTED INPUT
+
+                            process = subprocess.Popen(
+                                cmd_perl,
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, cwd=str(WORKSPACE_PARENT_DIR.resolve())
+                            )
+                            # Send the PATH to the ligand list file as input to the Perl script
+                            stdout_perl, stderr_perl = process.communicate(input=input_path_for_perl_stdin) # <--- CORRECTED INPUT
                             if proc.returncode != 0: st.error(f"Perl script failed for `{protein_base}` (RC: {proc.returncode}).")
                             
                             if stdout_p.strip():
