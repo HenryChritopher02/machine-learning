@@ -182,28 +182,62 @@ def run_ligand_prep_script(script_local_path_str, script_args, process_name, lig
         st.error(f"An unexpected error occurred running {process_name} for {ligand_name_for_log}: {e}")
         return False
 
-def convert_smiles_to_pdbqt(smiles_str, ligand_name_base, output_dir_path, ph_val, skip_taut, skip_acidbase, local_scrub_script_path, local_mk_prepare_script_path):
-    output_dir_path.mkdir(parents=True, exist_ok=True)
-    sdf_path = output_dir_path / f"{ligand_name_base}_scrubbed.sdf"
-    pdbqt_path = output_dir_path / f"{ligand_name_base}.pdbqt"
+def convert_smiles_to_pdbqt(smiles_str, ligand_name_base, output_dir_path_for_final_pdbqt, ph_val, skip_taut, skip_acidbase, local_scrub_script_path, local_mk_prepare_script_path):
+    """Converts a single SMILES string to a PDBQT file using local scripts.
+    Outputs will be relative to WORKSPACE_PARENT_DIR when scripts are run.
+    """
+    # output_dir_path_for_final_pdbqt is LIGAND_PREP_DIR_LOCAL
+
+    # Ensure the final PDBQT output directory (within workspace) exists
+    output_dir_path_for_final_pdbqt.mkdir(parents=True, exist_ok=True)
+
+    # Define filenames RELATIVE to WORKSPACE_PARENT_DIR (which will be the CWD for the scripts)
+    # The "prepared_ligands" part of the path is relative to WORKSPACE_PARENT_DIR
+    relative_sdf_filename = Path(LIGAND_PREP_DIR_LOCAL.name) / f"{ligand_name_base}_scrubbed.sdf"
+    relative_pdbqt_filename = Path(LIGAND_PREP_DIR_LOCAL.name) / f"{ligand_name_base}.pdbqt"
+
+    # Absolute paths are useful for checks and for the final return value
+    absolute_sdf_path = WORKSPACE_PARENT_DIR / relative_sdf_filename
+    absolute_pdbqt_path = WORKSPACE_PARENT_DIR / relative_pdbqt_filename # This is the same as output_dir_path_for_final_pdbqt / f"{ligand_name_base}.pdbqt"
+
     scrub_options = ["--ph", str(ph_val)]
     if skip_taut: scrub_options.append("--skip_tautomer")
     if skip_acidbase: scrub_options.append("--skip_acidbase")
-    scrub_args = [smiles_str, "-o", str(sdf_path)] + scrub_options
+
+    # Pass the RELATIVE path to scrub.py because its cwd will be WORKSPACE_PARENT_DIR
+    scrub_args = [smiles_str, "-o", str(relative_sdf_filename)] + scrub_options
     if not run_ligand_prep_script(str(local_scrub_script_path), scrub_args, "scrub.py", ligand_name_base):
         return None
-    mk_prepare_args = ["-i", str(sdf_path), "-o", str(pdbqt_path)]
-    if not run_ligand_prep_script(str(local_mk_prepare_script_path), mk_prepare_args, "mk_prepare_ligand.py", ligand_name_base):
-        return None
-    return str(pdbqt_path) if pdbqt_path.exists() else None
 
-def convert_ligand_file_to_pdbqt(input_ligand_file_path, ligand_name_base, output_dir_path, local_mk_prepare_script_path):
-    output_dir_path.mkdir(parents=True, exist_ok=True)
-    pdbqt_path = output_dir_path / f"{ligand_name_base}.pdbqt"
-    mk_prepare_args = ["-i", str(input_ligand_file_path), "-o", str(pdbqt_path)]
+    # For mk_prepare_ligand.py:
+    # Input is the SDF file just created. We can give its path relative to WORKSPACE_PARENT_DIR.
+    # Output is the PDBQT file, also relative to WORKSPACE_PARENT_DIR.
+    mk_prepare_args = ["-i", str(relative_sdf_filename), "-o", str(relative_pdbqt_filename)]
     if not run_ligand_prep_script(str(local_mk_prepare_script_path), mk_prepare_args, "mk_prepare_ligand.py", ligand_name_base):
         return None
-    return str(pdbqt_path) if pdbqt_path.exists() else None
+
+    return str(absolute_pdbqt_path) if absolute_pdbqt_path.exists() else None
+
+def convert_ligand_file_to_pdbqt(input_ligand_file_path_absolute, ligand_name_base, output_dir_path_for_final_pdbqt, local_mk_prepare_script_path):
+    """Converts an input ligand file to PDBQT using local mk_prepare_ligand.py.
+    The input_ligand_file_path_absolute is the path to the uploaded file.
+    Outputs will be relative to WORKSPACE_PARENT_DIR.
+    """
+    # output_dir_path_for_final_pdbqt is LIGAND_PREP_DIR_LOCAL
+    output_dir_path_for_final_pdbqt.mkdir(parents=True, exist_ok=True)
+
+    # Define output PDBQT filename RELATIVE to WORKSPACE_PARENT_DIR
+    relative_pdbqt_filename = Path(LIGAND_PREP_DIR_LOCAL.name) / f"{ligand_name_base}.pdbqt"
+    absolute_pdbqt_path = WORKSPACE_PARENT_DIR / relative_pdbqt_filename
+
+    # mk_prepare_ligand.py needs an input. We pass the absolute path to the uploaded file.
+    # It's generally safer for tools if their input paths are unambiguous (absolute).
+    # The output path is relative to its CWD (WORKSPACE_PARENT_DIR).
+    mk_prepare_args = ["-i", str(Path(input_ligand_file_path_absolute).resolve()), 
+                       "-o", str(relative_pdbqt_filename)]
+    if not run_ligand_prep_script(str(local_mk_prepare_script_path), mk_prepare_args, "mk_prepare_ligand.py", ligand_name_base):
+        return None
+    return str(absolute_pdbqt_path) if absolute_pdbqt_path.exists() else None
 
 # --- Main Application ---
 st.set_page_config(page_title="Ensemble AutoDock Vina", layout="wide")
