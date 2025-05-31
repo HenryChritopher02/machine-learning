@@ -156,8 +156,6 @@ def run_ligand_prep_script(script_local_path_str, script_args, process_name, lig
         result = subprocess.run(command, capture_output=True, text=True, check=True, cwd=cwd_path_resolved)
         if result.stdout.strip():
             with st.expander(f"{process_name} STDOUT for {ligand_name_for_log}", expanded=False): st.text(result.stdout)
-        if result.stderr.strip(): 
-            with st.expander(f"{process_name} STDERR for {ligand_name_for_log}", expanded=True): st.text(result.stderr)
         return True
     except subprocess.CalledProcessError as e:
         st.error(f"Error during {process_name} for {ligand_name_for_log} (RC: {e.returncode}):")
