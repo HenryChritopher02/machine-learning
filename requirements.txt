@@ -1,5 +1,6 @@
 streamlit
 meeko==0.6.1
+molscrub
 numpy
 pandas
 scikit-learn
