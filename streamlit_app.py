@@ -138,27 +138,52 @@ def get_smiles_from_pubchem_inchikey(inchikey_str):
 
 def run_ligand_prep_script(script_local_path, script_args, process_name, ligand_name_for_log):
     """Runs a Python ligand preparation script (scrub.py or mk_prepare_ligand.py)."""
-    if not script_local_path or not os.path.exists(script_local_path):
-        st.error(f"{process_name} script not found at {script_local_path}.")
+    if not script_local_path: # Check if the path string itself is None or empty
+        st.error(f"{process_name}: Script path is not defined.")
         return False
 
-    command = ["python", script_local_path] + script_args
+    # Convert script_local_path to an absolute path string
+    # This is crucial when using the 'cwd' argument in subprocess.run
+    absolute_script_path = str(Path(script_local_path).resolve()) # <--- KEY CHANGE
+
+    # Now, check if the resolved absolute path actually exists before trying to run it
+    if not os.path.exists(absolute_script_path):
+        st.error(f"{process_name} script not found at resolved absolute path: {absolute_script_path}")
+        st.error(f"(Original relative path provided: {script_local_path})")
+        return False
+
+    command = ["python", absolute_script_path] + script_args
+    
+    # Also ensure the cwd path is absolute and exists
+    cwd_path_resolved = str(WORKSPACE_PARENT_DIR.resolve())
+    if not os.path.exists(cwd_path_resolved):
+        st.error(f"Working directory {cwd_path_resolved} for {process_name} does not exist.")
+        return False
+
     try:
         st.info(f"Running {process_name} for {ligand_name_for_log}...")
-        # st.code(" ".join(command)) # For debugging
-        result = subprocess.run(command, capture_output=True, text=True, check=True, cwd=WORKSPACE_PARENT_DIR)
-        with st.expander(f"{process_name} output for {ligand_name_for_log} (stdout)", expanded=False):
-            st.text(result.stdout if result.stdout else "No standard output.")
-        if result.stderr:
-             with st.expander(f"{process_name} output for {ligand_name_for_log} (stderr) - check for errors", expanded=True):
+        st.caption(f"Command: python {absolute_script_path} {' '.join(script_args)}")
+        st.caption(f"Working Directory: {cwd_path_resolved}")
+        
+        result = subprocess.run(command, capture_output=True, text=True, check=True, cwd=cwd_path_resolved)
+        
+        # Using st.expander for outputs
+        with st.expander(f"{process_name} STDOUT for {ligand_name_for_log}", expanded=False):
+            st.text(result.stdout if result.stdout.strip() else "No standard output.")
+        
+        if result.stderr.strip(): # Only show stderr expander if there's content
+             with st.expander(f"{process_name} STDERR for {ligand_name_for_log} (check for warnings/errors)", expanded=True):
                 st.text(result.stderr)
         return True
     except subprocess.CalledProcessError as e:
         st.error(f"Error during {process_name} for {ligand_name_for_log}:")
         st.error(f"Command: `{' '.join(e.cmd)}`")
         st.error(f"Return code: {e.returncode}")
-        st.error(f"Stdout: {e.stdout}")
-        st.error(f"Stderr: {e.stderr}")
+        # Display stdout and stderr from the exception object
+        with st.expander(f"{process_name} STDOUT (on error)", expanded=True):
+            st.text(e.stdout if e.stdout.strip() else "No standard output.")
+        with st.expander(f"{process_name} STDERR (on error)", expanded=True):
+            st.text(e.stderr if e.stderr.strip() else "No standard error output.")
         return False
     except Exception as e:
         st.error(f"An unexpected error occurred running {process_name} for {ligand_name_for_log}: {e}")
