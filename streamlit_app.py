@@ -371,10 +371,11 @@ def display_ensemble_docking_procedure():
                         st.success(f"SMILES ligand '{lig_name_base_input}' prepared: {Path(detail['pdbqt_path']).name}")
                     else:
                         st.error(f"Failed to prepare ligand from SMILES: {actual_smiles}")
+            
             if _current_batch_processed_details:
                  st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
                  st.success(f"Added {len(_current_batch_processed_details)} ligand(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
-            elif not (not inchikey_or_smiles_val.strip() or not lig_name_base_input.strip() or not scrub_py_ok or not mk_prepare_ligand_py_ok):
+            elif not (not inchikey_or_smiles_val.strip() or not lig_name_base_input.strip() or (not scrub_py_ok or not mk_prepare_ligand_py_ok)): # only warn if an attempt was made
                  st.warning("No ligands were successfully prepared and added in this step.")
 
 
@@ -406,10 +407,11 @@ def display_ensemble_docking_procedure():
                                 st.error(f"Failed to prepare ligand from SMILES: {smiles_str}")
                 except Exception as e:
                     st.error(f"Error reading or processing SMILES file: {e}")
+            
             if _current_batch_processed_details:
                 st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
                 st.success(f"Added {len(_current_batch_processed_details)} ligand(s) from file. Total ready: {len(st.session_state.prepared_ligand_details_list)}")
-            elif uploaded_smiles_file:
+            elif uploaded_smiles_file: 
                  st.warning("No ligands were successfully prepared and added from the file.")
 
 
@@ -424,11 +426,12 @@ def display_ensemble_docking_procedure():
                     dest_path = LIGAND_PREP_DIR_LOCAL / up_file.name
                     with open(dest_path, "wb") as f: f.write(up_file.getbuffer())
                     _current_batch_processed_details.append({"id": up_file.name, "pdbqt_path": str(dest_path), "base_name": Path(up_file.name).stem})
-                if _current_batch_processed_details:
-                    st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
-                    st.success(f"Added {len(_current_batch_processed_details)} PDBQT file(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
-                else:
-                    st.warning("No PDBQT files were added.")
+            
+            if _current_batch_processed_details:
+                st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
+                st.success(f"Added {len(_current_batch_processed_details)} PDBQT file(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
+            elif uploaded_pdbqt_files:
+                st.warning("No PDBQT files were added in this step (already added or none selected).")
 
 
     elif ligand_input_method == "Other Ligand File(s)":
@@ -452,6 +455,7 @@ def display_ensemble_docking_procedure():
                     else:
                         st.error(f"Failed to convert ligand file: {up_file.name}")
                     if temp_ligand_path.exists(): temp_ligand_path.unlink(missing_ok=True)
+            
             if _current_batch_processed_details:
                 st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
                 st.success(f"Added {len(_current_batch_processed_details)} converted ligand(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
@@ -501,6 +505,7 @@ def display_ensemble_docking_procedure():
                 except Exception as e: st.error(f"Error processing ZIP archive: {e}")
                 finally:
                     if zip_file_path.exists(): zip_file_path.unlink(missing_ok=True)
+            
             if _current_batch_processed_details:
                 st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
                 st.success(f"Added {len(_current_batch_processed_details)} ligand(s) from ZIP. Total ready: {len(st.session_state.prepared_ligand_details_list)}")
@@ -530,6 +535,12 @@ def display_ensemble_docking_procedure():
             use_vina_screening_perl = st.checkbox("Use `Vina_screening.pl` (Strict Protein-Config Pairing)?", value=True, key="use_perl_dockpage_main_cb")
 
         if st.button("Start Docking Run", key="start_docking_main_btn_main_page", type="primary"):
+            # st.write(f"DEBUG: Starting docking run. Number of prepared ligands: {len(final_ligand_details_list)}")
+            # if final_ligand_details_list:
+            #     st.write("DEBUG: First prepared ligand details:", final_ligand_details_list[0])
+            # else:
+            #     st.warning("DEBUG: final_ligand_details_list is empty before starting docking loops.")
+
             st.session_state.docking_run_outputs = []
             DOCKING_OUTPUT_DIR_LOCAL.mkdir(parents=True, exist_ok=True)
 
@@ -566,14 +577,18 @@ def display_ensemble_docking_procedure():
                             proc = subprocess.Popen(cmd_perl, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=str(WORKSPACE_PARENT_DIR.resolve()))
                             stdout_p, stderr_p = proc.communicate(input=input_path_for_perl_stdin)
                             return_code_perl = proc.returncode
-                            if return_code_perl == 0: st.success(f"Perl script completed for `{protein_base}`.")
-                            else: st.error(f"Perl script failed for `{protein_base}` (RC: {return_code_perl}).")
+                            
+                            if return_code_perl == 0: 
+                                st.success(f"Perl script completed for `{protein_base}`.")
+                            else: 
+                                st.error(f"Perl script failed for `{protein_base}` (RC: {return_code_perl}).")
+                                if stderr_p.strip(): # Show STDERR only if script failed
+                                     with st.expander(f"Perl STDERR for {protein_base} (on error)", expanded=True): st.text(stderr_p)
+
 
                             if stdout_p.strip():
                                 with st.expander(f"Perl STDOUT for {protein_base}", expanded=False): st.text(stdout_p)
-                            if stderr_p.strip():
-                                with st.expander(f"Perl STDERR for {protein_base}", expanded=(return_code_perl != 0)): st.text(stderr_p)
-
+                            
                             perl_protein_out_dir = WORKSPACE_PARENT_DIR / protein_base
                             if perl_protein_out_dir.is_dir():
                                 for lig_detail in final_ligand_details_list:
@@ -595,9 +610,10 @@ def display_ensemble_docking_procedure():
                                             score = parse_vina_log(str(expected_log_file2))
                                             if score is not None:
                                                 log_found_and_parsed = True
-                                                st.info(f"Used alternative log name {log_name_pattern2} for {lig_detail['base_name']} with {protein_base}")
+                                                # st.info(f"DEBUG: Used alternative log name {log_name_pattern2} for {lig_detail['base_name']} with {protein_base}")
 
                                     if log_found_and_parsed:
+                                        # st.write(f"DEBUG (Perl): Parsed score {score} for {lig_detail['base_name']} with {protein_base}")
                                         st.session_state.docking_run_outputs.append({
                                             "ligand_id": lig_detail["id"],
                                             "ligand_base_name": lig_detail["base_name"],
@@ -605,10 +621,10 @@ def display_ensemble_docking_procedure():
                                             "config_stem": config_to_use.stem,
                                             "score": score
                                         })
-                                    elif not (return_code_perl != 0 and "error" in stderr_p.lower()): # Only warn if perl script didn't clearly fail for other reasons
-                                        st.warning(f"No log file found or score parsed for '{lig_detail['base_name']}' with protein '{protein_base}' using expected patterns in '{perl_protein_out_dir}'.")
+                                    # Removed the explicit warning for individual missing logs if perl script itself didn't clearly fail
                             else:
-                                st.warning(f"Perl output directory not found: {perl_protein_out_dir}")
+                                if return_code_perl == 0 : # Only warn if script was supposed to succeed
+                                    st.warning(f"Perl output directory not found: {perl_protein_out_dir}, though script reported success.")
                         except Exception as e_p: st.error(f"Error running Perl script for `{protein_base}`: {e_p}")
                         finally:
                             if temp_receptor_path.exists(): temp_receptor_path.unlink(missing_ok=True)
@@ -661,6 +677,7 @@ def display_ensemble_docking_procedure():
 
                             score = parse_score_from_pdbqt(str(output_pdbqt_docked.resolve()))
                             if score is not None:
+                                # st.write(f"DEBUG (Direct): Parsed score {score} for {lig_info['base_name']} with {receptor_file.stem}")
                                 st.session_state.docking_run_outputs.append({
                                     "ligand_id": lig_info["id"],
                                     "ligand_base_name": lig_info["base_name"],
