@@ -29,7 +29,7 @@ MK_PREPARE_LIGAND_PY_LOCAL_PATH = LIGAND_PREPROCESSING_SUBDIR_LOCAL / "mk_prepar
 VINA_SCREENING_PL_LOCAL_PATH = ENSEMBLE_DOCKING_DIR_LOCAL / "Vina_screening.pl"
 
 VINA_DIR_LOCAL = APP_ROOT / "vina"
-VINA_EXECUTABLE_NAME = "vina_1.2.5_linux_x86_64" # Make sure this is the correct name
+VINA_EXECUTABLE_NAME = "vina_1.2.5_linux_x86_64" 
 VINA_PATH_LOCAL = VINA_DIR_LOCAL / VINA_EXECUTABLE_NAME
 
 WORKSPACE_PARENT_DIR = APP_ROOT / "autodock_workspace"
@@ -549,7 +549,7 @@ def display_ensemble_docking_procedure():
     current_ligands_for_ui = st.session_state.get('prepared_ligand_details_list', [])
 
     show_perl_checkbox = len(current_ligands_for_ui) >= 1 and vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists()
-    use_perl_default = True # Default to using Perl script if available
+    use_perl_default = True 
     if show_perl_checkbox:
         st.checkbox("Use `Vina_screening.pl` (Strict Protein-Config Pairing)?", value=use_perl_default, key="use_perl_dockpage_main_cb_persistent")
     
@@ -575,123 +575,112 @@ def display_ensemble_docking_procedure():
             if show_perl_checkbox: 
                 use_vina_screening_perl_for_run_actual = st.session_state.get("use_perl_dockpage_main_cb_persistent", use_perl_default)
             
-                if use_vina_screening_perl_for_run_actual:
-                                st.info("DEBUG: Entering Perl script docking path.")
-                                st.markdown("##### Docking via `Vina_screening.pl` (Strict Protein-Config Pairing)")
-                                if not (vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists() and os.access(VINA_SCREENING_PL_LOCAL_PATH, os.X_OK)):
-                                    st.error(f"Local `Vina_screening.pl` script not available or not executable at {VINA_SCREENING_PL_LOCAL_PATH}.")
-                                else:
-                                    # 1. Create the file that lists all actual ligand PDBQT paths
-                                    ligand_list_file_for_perl = WORKSPACE_PARENT_DIR / "ligands_for_perl.txt"
-                                    with open(ligand_list_file_for_perl, "w") as f_list:
-                                        for lig_detail in final_ligand_details_list_for_run:
-                                            f_list.write(str(Path(lig_detail['pdbqt_path']).resolve()) + "\n")
-                                    st.info(f"DEBUG: Perl ligand list file created at: {str(ligand_list_file_for_perl.resolve())}")
-                                    st.caption(f"Content of '{ligand_list_file_for_perl.name}' will list actual PDBQT paths.")
-                
-                                    overall_docking_progress = st.progress(0)
-                                    receptors_processed_count = 0; skipped_receptor_count = 0
-                                    for i_rec, receptor_path_str in enumerate(current_receptors_for_run):
-                                        receptor_file = Path(receptor_path_str); protein_base = receptor_file.stem
-                                        st.markdown(f"--- \n**Receptor: `{receptor_file.name}` (Perl Mode)**")
-                                        config_to_use = None 
-                                        if not current_configs_for_run: st.error(f"No Vina configs for {receptor_file.name}."); skipped_receptor_count +=1; overall_docking_progress.progress((i_rec + 1) / len(current_receptors_for_run)); continue
-                                        elif len(current_configs_for_run) == 1: config_to_use = Path(current_configs_for_run[0])
-                                        else: config_to_use = find_paired_config_for_protein(protein_base, current_configs_for_run)
-                
-                                        if not config_to_use: st.warning(f"No paired config for `{receptor_file.name}`. Skipping."); skipped_receptor_count +=1; overall_docking_progress.progress((i_rec + 1) / len(current_receptors_for_run)); continue
-                                        st.caption(f"Using config: `{config_to_use.name}`")
-                
-                                        temp_receptor_path_for_perl = WORKSPACE_PARENT_DIR / receptor_file.name
-                                        shutil.copy(receptor_file, temp_receptor_path_for_perl)
-                                        
-                                        cmd_perl = ["perl", str(VINA_SCREENING_PL_LOCAL_PATH.resolve()),
-                                                    str(VINA_PATH_LOCAL.resolve()), 
-                                                    str(temp_receptor_path_for_perl.name), 
-                                                    str(config_to_use.resolve()), 
-                                                    protein_base]
-                                        try:
-                                            # 2. Prepare the input for Perl's STDIN: it's the *path* to the ligand list file itself.
-                                            path_to_ligand_list_for_perl_stdin = str(ligand_list_file_for_perl.resolve()) + "\n"
-                                            
-                                            st.info(f"DEBUG: Perl Command: `{' '.join(cmd_perl)}`")
-                                            st.info(f"DEBUG: Perl CWD: {str(WORKSPACE_PARENT_DIR.resolve())}")
-                                            st.info(f"DEBUG: Path being passed to Perl STDIN (Perl should treat this as a filename): {path_to_ligand_list_for_perl_stdin.strip()}")
-                                            
-                                            proc = subprocess.run(cmd_perl, 
-                                                                  input=path_to_ligand_list_for_perl_stdin, # Pass the PATH to the list file
-                                                                  capture_output=True, 
-                                                                  text=True, 
-                                                                  check=False, 
-                                                                  cwd=str(WORKSPACE_PARENT_DIR.resolve()))
-                                            
-                                            return_code_perl = proc.returncode
-                                            stdout_p = proc.stdout
-                                            stderr_p = proc.stderr
-                                            
-                                            st.info(f"Perl script for `{protein_base}` completed with RC: {return_code_perl}.") # Changed from DEBUG to INFO
-                                            if stdout_p.strip():
-                                                with st.expander(f"Perl STDOUT for {protein_base}", expanded=False): st.text(stdout_p)
-                                            if stderr_p.strip(): 
-                                                st.warning(f"Perl script for `{protein_base}` produced STDERR (RC: {return_code_perl}):")
-                                                with st.expander(f"Perl STDERR for {protein_base}", expanded=True): st.text(stderr_p)
-                                            
-                                            if return_code_perl != 0: 
-                                                st.error(f"Perl script execution failed for `{protein_base}` (RC: {return_code_perl}). Check STDOUT/STDERR above.")
-                                            
-                                            perl_protein_out_dir = WORKSPACE_PARENT_DIR / protein_base 
-                                            if perl_protein_out_dir.is_dir():
-                                                st.info(f"Perl: Output directory for {protein_base} found: {perl_protein_out_dir}") # Changed from DEBUG
-                                                for lig_detail in final_ligand_details_list_for_run:
-                                                    score = None
-                                                    possible_pdbqt_names = [
-                                                        f"{lig_detail['base_name']}-{protein_base}_out.pdbqt", 
-                                                        f"{lig_detail['base_name']}_{protein_base}_out.pdbqt", 
-                                                        f"{lig_detail['base_name']}_out.pdbqt",             
-                                                        f"{Path(lig_detail['pdbqt_path']).stem}_{protein_base}_out.pdbqt" 
-                                                    ]
-                                                    
-                                                    expected_pdbqt_file_found_path = None
-                                                    for pdbqt_name_pattern in possible_pdbqt_names:
-                                                        current_expected_pdbqt_file = perl_protein_out_dir / pdbqt_name_pattern
-                                                        # st.caption(f"Perl: Checking for PDBQT: {current_expected_pdbqt_file}") # Can be noisy
-                                                        if current_expected_pdbqt_file.exists():
-                                                            st.caption(f"Perl: Found PDBQT '{current_expected_pdbqt_file.name}', attempting to parse.")
-                                                            score = parse_score_from_pdbqt(str(current_expected_pdbqt_file))
-                                                            if score is not None:
-                                                                expected_pdbqt_file_found_path = current_expected_pdbqt_file
-                                                                break 
-                                                    
-                                                    if score is not None and expected_pdbqt_file_found_path:
-                                                        st.info(f"Perl: Score {score} for '{lig_detail['base_name']}' (protein '{protein_base}') from PDBQT '{expected_pdbqt_file_found_path.name}'.") # Changed from DEBUG
-                                                        st.session_state.docking_run_outputs.append({
-                                                            "ligand_id": lig_detail["id"],
-                                                            "ligand_base_name": lig_detail["base_name"],
-                                                            "protein_stem": protein_base,
-                                                            "config_stem": config_to_use.stem, 
-                                                            "score": score
-                                                        })
-                                                    else:
-                                                        # This warning is important if files are not found or not parsed
-                                                        st.warning(f"Perl: Score not obtained for '{lig_detail['base_name']}' with '{protein_base}'. Searched in '{perl_protein_out_dir}'.")
-                                            elif return_code_perl == 0 : 
-                                                st.warning(f"Perl output dir NOT found: {perl_protein_out_dir}, though script RC=0 for {protein_base}. Check Perl script's output behavior.")
-                
-                                        except Exception as e_p: 
-                                            st.error(f"Error during Perl script processing for `{protein_base}`: {type(e_p).__name__} - {e_p}")
-                                        finally:
-                                            if temp_receptor_path_for_perl.exists(): 
-                                                temp_receptor_path_for_perl.unlink(missing_ok=True)
-                                        
-                                        receptors_processed_count += 1
-                                        overall_docking_progress.progress((receptors_processed_count + skipped_receptor_count) / len(current_receptors_for_run))
+            if use_vina_screening_perl_for_run_actual:
+                st.markdown("##### Docking via `Vina_screening.pl` (Strict Protein-Config Pairing)")
+                if not (vina_screening_pl_ok and VINA_SCREENING_PL_LOCAL_PATH.exists() and os.access(VINA_SCREENING_PL_LOCAL_PATH, os.X_OK)):
+                    st.error(f"Local `Vina_screening.pl` script not available or not executable at {VINA_SCREENING_PL_LOCAL_PATH}.")
+                else:
+                    ligand_list_file_for_perl = WORKSPACE_PARENT_DIR / "ligands_for_perl.txt"
+                    with open(ligand_list_file_for_perl, "w") as f_list:
+                        for lig_detail in final_ligand_details_list_for_run:
+                            f_list.write(str(Path(lig_detail['pdbqt_path']).resolve()) + "\n")
+                    st.caption(f"Perl ligand list file created: '{ligand_list_file_for_perl.name}'")
+
+                    overall_docking_progress = st.progress(0)
+                    receptors_processed_count = 0; skipped_receptor_count = 0
+                    for i_rec, receptor_path_str in enumerate(current_receptors_for_run):
+                        receptor_file = Path(receptor_path_str); protein_base = receptor_file.stem
+                        st.markdown(f"--- \n**Receptor: `{receptor_file.name}` (Perl Mode)**")
+                        config_to_use = None 
+                        if not current_configs_for_run: st.error(f"No Vina configs for {receptor_file.name}."); skipped_receptor_count +=1; overall_docking_progress.progress((i_rec + 1) / len(current_receptors_for_run)); continue
+                        elif len(current_configs_for_run) == 1: config_to_use = Path(current_configs_for_run[0])
+                        else: config_to_use = find_paired_config_for_protein(protein_base, current_configs_for_run)
+
+                        if not config_to_use: st.warning(f"No paired config for `{receptor_file.name}`. Skipping."); skipped_receptor_count +=1; overall_docking_progress.progress((i_rec + 1) / len(current_receptors_for_run)); continue
+                        st.caption(f"Using config: `{config_to_use.name}`")
+
+                        temp_receptor_path_for_perl = WORKSPACE_PARENT_DIR / receptor_file.name
+                        shutil.copy(receptor_file, temp_receptor_path_for_perl)
+                        
+                        cmd_perl = ["perl", str(VINA_SCREENING_PL_LOCAL_PATH.resolve()),
+                                    str(VINA_PATH_LOCAL.resolve()), 
+                                    str(temp_receptor_path_for_perl.name), 
+                                    str(config_to_use.resolve()), 
+                                    protein_base]
+                        try:
+                            path_to_ligand_list_for_perl_stdin = str(ligand_list_file_for_perl.resolve()) + "\n"
+                            st.caption(f"Path being passed to Perl STDIN: {path_to_ligand_list_for_perl_stdin.strip()}")
+                            
+                            proc = subprocess.run(cmd_perl, 
+                                                  input=path_to_ligand_list_for_perl_stdin, 
+                                                  capture_output=True, 
+                                                  text=True, 
+                                                  check=False, 
+                                                  cwd=str(WORKSPACE_PARENT_DIR.resolve()))
+                            
+                            return_code_perl = proc.returncode
+                            stdout_p = proc.stdout
+                            stderr_p = proc.stderr
+                            
+                            st.info(f"Perl script for `{protein_base}` completed with RC: {return_code_perl}.")
+                            if stdout_p.strip():
+                                with st.expander(f"Perl STDOUT for {protein_base}", expanded=False): st.text(stdout_p)
+                            if stderr_p.strip(): 
+                                st.warning(f"Perl script for `{protein_base}` produced STDERR (RC: {return_code_perl}):")
+                                with st.expander(f"Perl STDERR for {protein_base}", expanded=True): st.text(stderr_p)
+                            
+                            if return_code_perl != 0: 
+                                st.error(f"Perl script execution failed for `{protein_base}` (RC: {return_code_perl}). Review STDOUT/STDERR above for details.")
+                            
+                            perl_protein_out_dir = WORKSPACE_PARENT_DIR / protein_base 
+                            if perl_protein_out_dir.is_dir():
+                                st.info(f"Perl: Output directory for {protein_base} found: {perl_protein_out_dir}")
+                                for lig_detail in final_ligand_details_list_for_run:
+                                    score = None
+                                    possible_pdbqt_names = [
+                                        f"{lig_detail['base_name']}-{protein_base}_out.pdbqt", 
+                                        f"{lig_detail['base_name']}_{protein_base}_out.pdbqt", 
+                                        f"{lig_detail['base_name']}_out.pdbqt",             
+                                        f"{Path(lig_detail['pdbqt_path']).stem}_{protein_base}_out.pdbqt" 
+                                    ]
                                     
-                                    # Clean up the main ligand list file after all receptors are processed using it.
-                                    if ligand_list_file_for_perl.exists(): 
-                                        ligand_list_file_for_perl.unlink(missing_ok=True)
-                                    if skipped_receptor_count > 0: 
-                                        st.warning(f"{skipped_receptor_count} receptor(s) skipped in Perl mode.")
-                            # ... (rest of the code for direct Vina and summary)
+                                    expected_pdbqt_file_found_path = None
+                                    for pdbqt_name_pattern in possible_pdbqt_names:
+                                        current_expected_pdbqt_file = perl_protein_out_dir / pdbqt_name_pattern
+                                        if current_expected_pdbqt_file.exists():
+                                            st.caption(f"Perl: Found PDBQT '{current_expected_pdbqt_file.name}', attempting to parse.")
+                                            score = parse_score_from_pdbqt(str(current_expected_pdbqt_file))
+                                            if score is not None:
+                                                expected_pdbqt_file_found_path = current_expected_pdbqt_file
+                                                break 
+                                    
+                                    if score is not None and expected_pdbqt_file_found_path:
+                                        st.info(f"Perl: Score {score} for '{lig_detail['base_name']}' (protein '{protein_base}') from PDBQT '{expected_pdbqt_file_found_path.name}'.")
+                                        st.session_state.docking_run_outputs.append({
+                                            "ligand_id": lig_detail["id"],
+                                            "ligand_base_name": lig_detail["base_name"],
+                                            "protein_stem": protein_base,
+                                            "config_stem": config_to_use.stem, 
+                                            "score": score
+                                        })
+                                    else:
+                                        st.warning(f"Perl: Score not obtained for '{lig_detail['base_name']}' with '{protein_base}'. Searched in '{perl_protein_out_dir}'.")
+                            elif return_code_perl == 0 : 
+                                st.warning(f"Perl output dir NOT found: {perl_protein_out_dir}, though script RC=0 for {protein_base}. Check Perl script's output behavior.")
+
+                        except Exception as e_p: 
+                            st.error(f"Error during Perl script processing for `{protein_base}`: {type(e_p).__name__} - {e_p}")
+                        finally:
+                            if temp_receptor_path_for_perl.exists(): 
+                                temp_receptor_path_for_perl.unlink(missing_ok=True)
+                        
+                        receptors_processed_count += 1
+                        overall_docking_progress.progress((receptors_processed_count + skipped_receptor_count) / len(current_receptors_for_run))
+                    
+                    if ligand_list_file_for_perl.exists(): 
+                        ligand_list_file_for_perl.unlink(missing_ok=True)
+                    if skipped_receptor_count > 0: 
+                        st.warning(f"{skipped_receptor_count} receptor(s) skipped in Perl mode.")
 
             else: # Direct Vina calls
                 st.markdown("##### Docking via Direct Vina Calls (Strict Protein-Config Pairing)")
@@ -741,7 +730,7 @@ def display_ensemble_docking_procedure():
                             if res_vina.stdout.strip():
                                 with st.expander(f"Vina STDOUT for {output_base_name}", expanded=False): st.text(res_vina.stdout)
                             if res_vina.stderr.strip(): 
-                                with st.expander(f"Vina STDERR for {output_base_name} (Warnings/Info)", expanded=False): # Usually less critical if stdout is fine
+                                with st.expander(f"Vina STDERR for {output_base_name} (Warnings/Info)", expanded=False): 
                                     st.text(res_vina.stderr)
 
                             if output_pdbqt_docked.exists() and output_pdbqt_docked.stat().st_size > 0:
@@ -842,14 +831,13 @@ def main():
     st.sidebar.title("Docking Suite")
 
     app_mode_options = ("Ensemble Docking", "About")
-    # Default to "Ensemble Docking" if not set, using index 0
     app_mode_default = app_mode_options[0] 
     app_mode = st.sidebar.radio(
         "Select Procedure:", app_mode_options,
-        index=app_mode_options.index(st.session_state.get("app_mode_select", app_mode_default)), # Ensure key exists
-        key="app_mode_selector_main_radio", # Give unique key to radio
+        index=app_mode_options.index(st.session_state.get("app_mode_select", app_mode_default)), 
+        key="app_mode_selector_main_radio", 
     )
-    st.session_state.app_mode_select = app_mode # Store selected mode
+    st.session_state.app_mode_select = app_mode 
     st.sidebar.markdown("---")
 
     if app_mode == "Ensemble Docking":
