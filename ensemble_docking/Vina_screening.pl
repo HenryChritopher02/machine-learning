@@ -100,8 +100,7 @@ for my $single_ligand_path (@arr_individual_ligand_paths) {
         '--receptor', $receptor_file_path,
         '--config',   $config_file_path,
         '--ligand',   $abs_single_ligand_path,
-        '--out',      $output_docked_pdbqt,
-        '--log',      $output_log_txt
+        '--out',      $output_docked_pdbqt
         # Add other Vina parameters if necessary (e.g., --cpu, --exhaustiveness, if not in config)
     );
 
