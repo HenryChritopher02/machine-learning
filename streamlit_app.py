@@ -215,24 +215,26 @@ def parse_score_from_pdbqt(pdbqt_file_path: str) -> float | None:
         with open(pdbqt_file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
         
-        # Iterate through the first ~20 lines to find the VINA RESULT remark
-        for i, line in enumerate(lines[:20]): # Check first 20 lines
+        # Iterate through all lines to find the VINA RESULT remark
+        for i, line in enumerate(lines): # Search all lines
             line = line.strip()
-            if line.startswith("REMARK VINA RESULT:"):
-                parts = line.split(':')
+            if line.startswith("REMARK VINA RESULT:"): # Standard Vina output
+                parts = line.split(':', 1) # Split only on the first colon
                 if len(parts) > 1:
-                    score_part = parts[1].strip().split()
-                    if score_part:
+                    # The score is usually the first value after the colon
+                    # Example: "REMARK VINA RESULT:      -7.5      0.000      0.000"
+                    score_values = parts[1].strip().split()
+                    if score_values:
                         try:
-                            return float(score_part[0])
+                            return float(score_values[0])
                         except ValueError:
-                            st.warning(f"Could not convert score part '{score_part[0]}' to float in {Path(pdbqt_file_path).name} on line {i+1}")
+                            st.warning(f"Could not convert score part '{score_values[0]}' to float in {Path(pdbqt_file_path).name} on line {i+1}. Line content: '{line}'")
                             return None # Failed to convert score part
-                st.warning(f"Found 'REMARK VINA RESULT:' but could not parse score in {Path(pdbqt_file_path).name} on line {i+1}")
+                st.warning(f"Found 'REMARK VINA RESULT:' but could not parse score in {Path(pdbqt_file_path).name} on line {i+1}. Line content: '{line}'")
                 return None # Found remark but format was unexpected after colon
         
         # If loop finishes without finding the specific remark
-        st.warning(f"Could not find 'REMARK VINA RESULT:' in the first 20 lines of {Path(pdbqt_file_path).name}")
+        st.warning(f"Could not find 'REMARK VINA RESULT:' in {Path(pdbqt_file_path).name}. File checked thoroughly.")
         return None
         
     except FileNotFoundError:
