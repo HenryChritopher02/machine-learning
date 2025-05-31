@@ -633,8 +633,7 @@ else:
                             cmd_vina_direct = [
                                 str(VINA_PATH_LOCAL.resolve()),
                                 "--receptor", str(receptor_file.resolve()), "--ligand", str(ligand_file.resolve()),
-                                "--config", str(config_file.resolve()), "--out", str(output_pdbqt_docked.resolve()),
-                                "--log", str(output_log_file.resolve())
+                                "--config", str(config_file.resolve()), "--out", str(output_pdbqt_docked.resolve())
                             ]
                             # st.code(" ".join(cmd_vina_direct)) # Debug
                             try:
