@@ -596,7 +596,7 @@ def display_ensemble_docking_procedure():
                                             "score": score
                                         })
                                     else:
-                                        st.warning(f"No log file found or score parsed for '{lig_detail['base_name']}' with protein '{protein_base}' using expected patterns in '{perl_protein_out_dir}'.")
+                                        # st.warning(f"No log file found or score parsed for '{lig_detail['base_name']}' with protein '{protein_base}' using expected patterns in '{perl_protein_out_dir}'.")
                             else:
                                 st.warning(f"Perl output directory not found: {perl_protein_out_dir}")
                         except Exception as e_p: st.error(f"Error running Perl script for `{protein_base}`: {e_p}")
