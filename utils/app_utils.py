@@ -51,7 +51,7 @@ def standardize_smiles_rdkit(smiles, invalid_smiles_list):
 
 def initialize_directories():
     # Import all necessary directory paths from paths.py
-    from paths import (
+    from .paths import (
         WORKSPACE_PARENT_DIR, RECEPTOR_DIR_LOCAL, CONFIG_DIR_LOCAL,
         LIGAND_PREP_DIR_LOCAL, LIGAND_UPLOAD_TEMP_DIR,
         ZIP_EXTRACT_DIR_LOCAL, DOCKING_OUTPUT_DIR_LOCAL,
