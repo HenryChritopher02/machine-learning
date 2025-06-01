@@ -31,4 +31,4 @@ ZIP_EXTRACT_DIR_LOCAL = WORKSPACE_PARENT_DIR / "zip_extracted_ligands"
 DOCKING_OUTPUT_DIR_LOCAL = APP_ROOT / "autodock_outputs"
 
 # Prediction Model Related URL
-BACE_TRAIN_DATA_URL = "https://github.com/HenryChritopher02/machine-learning/blob/master/train_data/bace_train_lipinski_mordred.csv"
+BACE_TRAIN_DATA_URL = "https://raw.githubusercontent.com/HenryChritopher02/machine-learning/refs/heads/master/train_data/bace_train_lipinski_mordred.csv"
