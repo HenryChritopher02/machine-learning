@@ -623,7 +623,7 @@ def display_ensemble_docking_procedure():
                             #st.info(f"Perl script for `{protein_base}` completed with RC: {return_code_perl}.")
                             if stdout_p.strip():
                                 with st.expander(f"Perl STDOUT for {protein_base}", expanded=False): st.text(stdout_p)
-                            if stderr_p.strip(): 
+                            #if stderr_p.strip(): 
                                 #st.warning(f"Perl script for `{protein_base}` produced STDERR (RC: {return_code_perl}):")
                                 #with st.expander(f"Perl STDERR for {protein_base}", expanded=True): st.text(stderr_p)
                             
