@@ -10,3 +10,4 @@ joblib
 requests
 molscrub
 matplotlib
+mordred
