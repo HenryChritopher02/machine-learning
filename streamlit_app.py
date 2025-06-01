@@ -62,16 +62,11 @@ def standardize_smiles_rdkit(smiles, invalid_smiles_list): # Renamed to avoid co
         # Neutralize charges
         uncharger = rdMolStandardize.Uncharger()
         mol = uncharger.uncharge(mol)
-
-        # Reionize (optional, depending on desired protonation state handling before Dimorphite-DL/scrub.py)
-        # For now, we align with the general standardization steps.
-        # If specific ionization is handled by scrub.py, this step might be redundant or need careful consideration.
-        # mol = rdMolStandardize.Reionizer().reionize(mol) # Example if reionization is needed
+        mol = rdMolStandardize.Reionizer().reionize(mol) # Example if reionization is needed
 
         # Disconnect metal atoms
         metal_disconnector = rdMolStandardize.MetalDisconnector()
         mol = metal_disconnector.Disconnect(mol)
-
 
         # Get the largest fragment (parent molecule)
         mol = rdMolStandardize.FragmentParent(mol)
@@ -83,7 +78,7 @@ def standardize_smiles_rdkit(smiles, invalid_smiles_list): # Renamed to avoid co
         # isomericSmiles=False will remove stereo info from SMILES, which might be desired for some workflows
         # but often retaining it (isomericSmiles=True) is preferred up until 3D generation.
         # kekuleSmiles=True can sometimes help with consistency but may not always be necessary.
-        standardized_smiles_out = Chem.MolToSmiles(mol, canonical=True, isomericSmiles=True) # Retain isomerism by default
+        standardized_smiles_out = Chem.MolToSmiles(mol, canonical=True, isomericSmiles=False) # Retain isomerism by default
         return standardized_smiles_out
     except Exception as e:
         st.warning(f"Error standardizing SMILES '{smiles}': {e}")
@@ -140,7 +135,6 @@ def download_file_from_github(raw_download_base_url, relative_path_segment, loca
 
 def make_file_executable(filepath_str):
     if not filepath_str or not os.path.exists(filepath_str):
-        #st.sidebar.warning(f"Make executable: File not found at {filepath_str}") # Can be noisy
         return False
     try:
         os.chmod(filepath_str, os.stat(filepath_str).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -159,7 +153,7 @@ def check_vina_binary(show_success=True):
     if not VINA_PATH_LOCAL.exists():
         st.sidebar.error(f"Vina exe NOT FOUND at `{VINA_PATH_LOCAL}`. Ensure `{VINA_EXECUTABLE_NAME}` is in `{VINA_DIR_LOCAL}`.")
         return False
-    if show_success: st.sidebar.success(f"Vina binary found: `{VINA_PATH_LOCAL.name}`")
+    if show_success: st.sidebar.success("Vina binary found")
 
     if os.access(str(VINA_PATH_LOCAL.resolve()), os.X_OK):
         if show_success: st.sidebar.success("Vina binary is executable.")
@@ -193,7 +187,6 @@ def run_ligand_prep_script(script_local_path_str, script_args, process_name, lig
         st.error(f"{process_name} script NOT FOUND: {absolute_script_path}"); return False
 
     if not os.access(absolute_script_path, os.X_OK):
-        #st.info(f"Attempting to make {process_name} script executable: {absolute_script_path}") # Can be noisy
         if not make_file_executable(absolute_script_path) or not os.access(absolute_script_path, os.X_OK):
             st.error(f"Failed to make {process_name} script executable. Cannot run.")
             return False
@@ -203,13 +196,9 @@ def run_ligand_prep_script(script_local_path_str, script_args, process_name, lig
     if not os.path.exists(cwd_path_resolved):
         st.error(f"Working directory {cwd_path_resolved} for {process_name} missing."); return False
     try:
-        #st.info(f"Running {process_name} for {ligand_name_for_log}...") # Can be noisy
         result = subprocess.run(command, capture_output=True, text=True, check=True, cwd=cwd_path_resolved)
         if result.stdout.strip():
             with st.expander(f"{process_name} STDOUT for {ligand_name_for_log}", expanded=False): st.text(result.stdout)
-        # Only show STDERR if it seems like an error or significant warning
-        # if result.stderr.strip() and ("error" in result.stderr.lower() or "warning" in result.stderr.lower() or "fail" in result.stderr.lower()):
-        #     with st.expander(f"{process_name} STDERR for {ligand_name_for_log}", expanded=True): st.text(result.stderr)
         return True
     except subprocess.CalledProcessError as e:
         st.error(f"Error during {process_name} for {ligand_name_for_log} (RC: {e.returncode}):")
@@ -340,7 +329,7 @@ def display_ensemble_docking_procedure():
         vina_ready = check_vina_binary(show_success=True)
         st.markdown("---")
 
-        # Receptor and Config fetching UI ( 그대로 유지 )
+        # Receptor and Config fetching UI
         st.subheader(" Receptor(s)")
         receptor_fetch_method = st.radio("Fetch Receptors:", ("All from GitHub", "Specify from GitHub"), key="receptor_fetch_method_dockpage", horizontal=True, label_visibility="collapsed")
         receptor_dir_in_repo = f"{GH_ENSEMBLE_DOCKING_ROOT_PATH}/{RECEPTOR_SUBDIR_GH.strip('/')}"
@@ -671,8 +660,6 @@ def display_ensemble_docking_procedure():
                     with open(ligand_list_file_for_perl, "w") as f_list:
                         for lig_detail in final_ligand_details_list_for_run:
                             f_list.write(str(Path(lig_detail['pdbqt_path']).resolve()) + "\n")
-                    #st.caption(f"Perl ligand list file created: '{ligand_list_file_for_perl.name}'")
-
                     overall_docking_progress = st.progress(0)
                     receptors_processed_count = 0; skipped_receptor_count = 0
                     for i_rec, receptor_path_str in enumerate(current_receptors_for_run):
@@ -684,7 +671,6 @@ def display_ensemble_docking_procedure():
                         else: config_to_use = find_paired_config_for_protein(protein_base, current_configs_for_run)
 
                         if not config_to_use: st.warning(f"No paired config for `{receptor_file.name}`. Skipping."); skipped_receptor_count +=1; overall_docking_progress.progress((i_rec + 1) / len(current_receptors_for_run)); continue
-                        #st.caption(f"Using config: `{config_to_use.name}`")
 
                         temp_receptor_path_for_perl = WORKSPACE_PARENT_DIR / receptor_file.name
                         shutil.copy(receptor_file, temp_receptor_path_for_perl)
@@ -695,9 +681,7 @@ def display_ensemble_docking_procedure():
                                     str(config_to_use.resolve()), 
                                     protein_base]
                         try:
-                            path_to_ligand_list_for_perl_stdin = str(ligand_list_file_for_perl.resolve()) + "\n"
-                            #st.caption(f"Path being passed to Perl STDIN: {path_to_ligand_list_for_perl_stdin.strip()}")
-                            
+                            path_to_ligand_list_for_perl_stdin = str(ligand_list_file_for_perl.resolve()) + "\n"                            
                             proc = subprocess.run(cmd_perl, 
                                                   input=path_to_ligand_list_for_perl_stdin, 
                                                   capture_output=True, 
@@ -709,19 +693,14 @@ def display_ensemble_docking_procedure():
                             stdout_p = proc.stdout
                             stderr_p = proc.stderr
                             
-                            #st.info(f"Perl script for `{protein_base}` completed with RC: {return_code_perl}.")
                             if stdout_p.strip():
                                 with st.expander(f"Perl STDOUT for {protein_base}", expanded=False): st.text(stdout_p)
-                            # if stderr_p.strip(): 
-                            #     st.warning(f"Perl script for `{protein_base}` produced STDERR (RC: {return_code_perl}):")
-                            #     with st.expander(f"Perl STDERR for {protein_base}", expanded=True): st.text(stderr_p)
                             
                             if return_code_perl != 0: 
                                 st.error(f"Perl script execution failed for `{protein_base}` (RC: {return_code_perl}). Review STDOUT/STDERR above for details.")
                             
                             perl_protein_out_dir = WORKSPACE_PARENT_DIR / protein_base 
                             if perl_protein_out_dir.is_dir():
-                                #st.info(f"Perl: Output directory for {protein_base} found: {perl_protein_out_dir}")
                                 for lig_detail in final_ligand_details_list_for_run:
                                     score = None
                                     possible_pdbqt_names = [
@@ -735,14 +714,12 @@ def display_ensemble_docking_procedure():
                                     for pdbqt_name_pattern in possible_pdbqt_names:
                                         current_expected_pdbqt_file = perl_protein_out_dir / pdbqt_name_pattern
                                         if current_expected_pdbqt_file.exists():
-                                            #st.caption(f"Perl: Found PDBQT '{current_expected_pdbqt_file.name}', attempting to parse.")
                                             score = parse_score_from_pdbqt(str(current_expected_pdbqt_file))
                                             if score is not None:
                                                 expected_pdbqt_file_found_path = current_expected_pdbqt_file
                                                 break 
                                     
                                     if score is not None and expected_pdbqt_file_found_path:
-                                        #st.info(f"Perl: Score {score} for '{lig_detail['base_name']}' (protein '{protein_base}') from PDBQT '{expected_pdbqt_file_found_path.name}'.")
                                         st.session_state.docking_run_outputs.append({
                                             "ligand_id": lig_detail["id"],
                                             "ligand_base_name": lig_detail["base_name"],
