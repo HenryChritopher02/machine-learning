@@ -9,3 +9,4 @@ matplotlib
 joblib
 requests
 molscrub
+matplotlib
