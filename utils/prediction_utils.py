@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from rdkit import Chem
 from rdkit.Chem import AllChem
-from mordred import Calculator, descriptors as mordred_descriptors_collection # Renamed to avoid conflict
+from mordred import Calculator, descriptors
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.decomposition import PCA
@@ -17,7 +17,7 @@ def calculate_mordred_descriptors(mols):
     """Calculates Mordred descriptors for a list of RDKit Mol objects."""
     if not mols:
         return pd.DataFrame()
-    calc = Calculator(mordred_descriptors_collection, ignore_3D=True)
+    calc = Calculator(descriptors, ignore_3D=True)
     df_mordred = calc.pandas(mols)
 
     # Process error objects from Mordred to NaN
