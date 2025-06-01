@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import requests
 
 # Import paths from paths.py
-from paths import BACE_TRAIN_DATA_URL
+from .paths import BACE_TRAIN_DATA_URL
 
 def calculate_mordred_descriptors(mols):
     """Calculates Mordred descriptors for a list of RDKit Mol objects."""
