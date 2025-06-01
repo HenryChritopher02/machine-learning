@@ -15,7 +15,7 @@ from rdkit import Chem
 from rdkit.Chem.MolStandardize import rdMolStandardize
 
 # Import paths from paths.py
-from paths import (
+from .paths import (
     WORKSPACE_PARENT_DIR, LIGAND_PREP_DIR_LOCAL, VINA_PATH_LOCAL, VINA_DIR_LOCAL,
     VINA_EXECUTABLE_NAME
 )
