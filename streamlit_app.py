@@ -1,320 +1,55 @@
 import streamlit as st
-import subprocess
-import os
-import stat
-import requests
-import zipfile
-import shutil
-from urllib.parse import urljoin
+import subprocess # Keep for Vina calls if not fully moved
+import os # Keep for Vina calls if not fully moved
+# import stat # Moved to app_utils
+# import requests # Moved to app_utils
+import zipfile # Keep for zip processing logic here
+import shutil # Keep for zip processing logic here
+# from urllib.parse import urljoin # Moved
 from pathlib import Path
-import sys
+import sys # Keep for script running
 import pandas as pd
 
-# Added RDKit imports for the standardize function
+# RDKit imports (some might be specific to functions here or in utils)
 from rdkit import Chem
-from rdkit.Chem.MolStandardize import rdMolStandardize
+# from rdkit.Chem.MolStandardize import rdMolStandardize # Moved to app_utils
 
-APP_VERSION = "1.2.5"
+# Import from local utility files
+from utils.paths import (
+    APP_VERSION, BASE_GITHUB_URL_FOR_DATA, GH_API_BASE_URL, GH_OWNER, GH_REPO, GH_BRANCH,
+    GH_ENSEMBLE_DOCKING_ROOT_PATH, RECEPTOR_SUBDIR_GH, CONFIG_SUBDIR_GH,
+    APP_ROOT, ENSEMBLE_DOCKING_DIR_LOCAL, LIGAND_PREPROCESSING_SUBDIR_LOCAL,
+    SCRUB_PY_LOCAL_PATH, MK_PREPARE_LIGAND_PY_LOCAL_PATH, VINA_SCREENING_PL_LOCAL_PATH,
+    VINA_DIR_LOCAL, VINA_EXECUTABLE_NAME, VINA_PATH_LOCAL,
+    WORKSPACE_PARENT_DIR, RECEPTOR_DIR_LOCAL, CONFIG_DIR_LOCAL,
+    LIGAND_PREP_DIR_LOCAL, LIGAND_UPLOAD_TEMP_DIR, ZIP_EXTRACT_DIR_LOCAL,
+    DOCKING_OUTPUT_DIR_LOCAL
+)
 
-BASE_GITHUB_URL_FOR_DATA = "https://raw.githubusercontent.com/HenryChritopher02/bace1/main/ensemble-docking/"
-GH_API_BASE_URL = "https://api.github.com/repos/"
-GH_OWNER = "HenryChritopher02"
-GH_REPO = "bace1"
-GH_BRANCH = "main"
-GH_ENSEMBLE_DOCKING_ROOT_PATH = "ensemble-docking"
-RECEPTOR_SUBDIR_GH = "ensemble_protein/"
-CONFIG_SUBDIR_GH = "config/"
+from utils.app_utils import (
+    standardize_smiles_rdkit, initialize_directories, list_files_from_github_repo_dir,
+    download_file_from_github, make_file_executable, check_script_exists,
+    check_vina_binary, get_smiles_from_pubchem_inchikey, run_ligand_prep_script,
+    convert_smiles_to_pdbqt, convert_ligand_file_to_pdbqt,
+    find_paired_config_for_protein, convert_df_to_csv, parse_score_from_pdbqt
+)
 
-APP_ROOT = Path(".")
-ENSEMBLE_DOCKING_DIR_LOCAL = APP_ROOT / "ensemble_docking"
-LIGAND_PREPROCESSING_SUBDIR_LOCAL = ENSEMBLE_DOCKING_DIR_LOCAL / "ligand_preprocessing"
-SCRUB_PY_LOCAL_PATH = LIGAND_PREPROCESSING_SUBDIR_LOCAL / "scrub.py"
-MK_PREPARE_LIGAND_PY_LOCAL_PATH = LIGAND_PREPROCESSING_SUBDIR_LOCAL / "mk_prepare_ligand.py"
-VINA_SCREENING_PL_LOCAL_PATH = ENSEMBLE_DOCKING_DIR_LOCAL / "Vina_screening.pl"
-
-VINA_DIR_LOCAL = APP_ROOT / "vina"
-VINA_EXECUTABLE_NAME = "vina_1.2.5_linux_x86_64"
-VINA_PATH_LOCAL = VINA_DIR_LOCAL / VINA_EXECUTABLE_NAME
-
-WORKSPACE_PARENT_DIR = APP_ROOT / "autodock_workspace"
-RECEPTOR_DIR_LOCAL = WORKSPACE_PARENT_DIR / "fetched_receptors"
-CONFIG_DIR_LOCAL = WORKSPACE_PARENT_DIR / "fetched_configs"
-LIGAND_PREP_DIR_LOCAL = WORKSPACE_PARENT_DIR / "prepared_ligands"
-LIGAND_UPLOAD_TEMP_DIR = WORKSPACE_PARENT_DIR / "uploaded_ligands_temp"
-ZIP_EXTRACT_DIR_LOCAL = WORKSPACE_PARENT_DIR / "zip_extracted_ligands"
-DOCKING_OUTPUT_DIR_LOCAL = APP_ROOT / "autodock_outputs"
-
-# --- New Standardize Function ---
-def standardize_smiles_rdkit(smiles, invalid_smiles_list): # Renamed to avoid conflict if user has other 'standardize'
-    """Standardizes a SMILES string using RDKit."""
-    try:
-        mol = Chem.MolFromSmiles(smiles)  # Sanitize = True by default
-        if mol is None:
-            # st.warning(f"RDKit MolFromSmiles returned None for: {smiles}") # Use st.warning for Streamlit UI
-            invalid_smiles_list.append(smiles)
-            return None # Explicitly return None if MolFromSmiles fails
-
-        # Standard RDKit sanitization, kekulization, and hydrogen removal
-        Chem.SanitizeMol(mol)
-        Chem.Kekulize(mol) # Kekulize before removing Hs if needed for aromaticity perception
-        mol = Chem.RemoveHs(mol) # Remove explicit hydrogens
-
-        # Neutralize charges
-        uncharger = rdMolStandardize.Uncharger()
-        mol = uncharger.uncharge(mol)
-        mol = rdMolStandardize.Reionizer().reionize(mol) # Example if reionization is needed
-
-        # Disconnect metal atoms
-        metal_disconnector = rdMolStandardize.MetalDisconnector()
-        mol = metal_disconnector.Disconnect(mol)
-
-        # Get the largest fragment (parent molecule)
-        mol = rdMolStandardize.FragmentParent(mol)
-
-        # Ensure stereochemistry is assigned
-        Chem.AssignStereochemistry(mol, force=True, cleanIt=True)
-
-        # Generate canonical SMILES (non-isomeric, kekulized for consistency if that's the goal)
-        # isomericSmiles=False will remove stereo info from SMILES, which might be desired for some workflows
-        # but often retaining it (isomericSmiles=True) is preferred up until 3D generation.
-        # kekuleSmiles=True can sometimes help with consistency but may not always be necessary.
-        standardized_smiles_out = Chem.MolToSmiles(mol, canonical=True, isomericSmiles=False) # Retain isomerism by default
-        return standardized_smiles_out
-    except Exception as e:
-        st.warning(f"Error standardizing SMILES '{smiles}': {e}")
-        invalid_smiles_list.append(smiles)
-        return None
-# --- End of Standardize Function ---
-
-def initialize_directories():
-    dirs_to_create = [
-        WORKSPACE_PARENT_DIR, RECEPTOR_DIR_LOCAL, CONFIG_DIR_LOCAL,
-        LIGAND_PREP_DIR_LOCAL, LIGAND_UPLOAD_TEMP_DIR,
-        ZIP_EXTRACT_DIR_LOCAL, DOCKING_OUTPUT_DIR_LOCAL,
-        ENSEMBLE_DOCKING_DIR_LOCAL, LIGAND_PREPROCESSING_SUBDIR_LOCAL, VINA_DIR_LOCAL
-    ]
-    for dir_path in dirs_to_create:
-        dir_path.mkdir(parents=True, exist_ok=True)
-
-def list_files_from_github_repo_dir(owner: str, repo: str, dir_path_in_repo: str, branch: str, file_extension: str = None) -> list[str]:
-    api_url = f"{GH_API_BASE_URL}{owner}/{repo}/contents/{dir_path_in_repo}?ref={branch}"
-    filenames = []
-    try:
-        response = requests.get(api_url, timeout=10)
-        response.raise_for_status()
-        contents = response.json()
-        if not isinstance(contents, list):
-            st.sidebar.error(f"API Error for {dir_path_in_repo}: Expected list.")
-            if isinstance(contents, dict) and 'message' in contents: st.sidebar.error(f"GitHub: {contents['message']}")
-            return []
-        for item in contents:
-            if item.get('type') == 'file':
-                if file_extension:
-                    if item.get('name', '').lower().endswith(file_extension.lower()):
-                        filenames.append(item['name'])
-                else:
-                    filenames.append(item['name'])
-        if not filenames and file_extension:
-            st.sidebar.caption(f"No files matching '{file_extension}' found in '{dir_path_in_repo}'.")
-    except Exception as e:
-        st.sidebar.error(f"Error listing files from GitHub ({dir_path_in_repo}): {e}")
-    return filenames
-
-def download_file_from_github(raw_download_base_url, relative_path_segment, local_filename, local_save_dir):
-    full_url = urljoin(raw_download_base_url, relative_path_segment)
-    local_file_path = Path(local_save_dir) / local_filename
-    try:
-        response = requests.get(full_url, stream=True, timeout=15)
-        response.raise_for_status()
-        with open(local_file_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192): f.write(chunk)
-        return str(local_file_path)
-    except requests.exceptions.RequestException as e:
-        st.sidebar.error(f"Error downloading {local_filename} from {full_url}: {e}")
-        return None
-
-def make_file_executable(filepath_str):
-    if not filepath_str or not os.path.exists(filepath_str):
-        return False
-    try:
-        os.chmod(filepath_str, os.stat(filepath_str).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        return True
-    except Exception as e:
-        st.sidebar.error(f"Failed to make {filepath_str} executable: {e}")
-        return False
-
-def check_script_exists(script_path: Path, script_name: str, is_critical: bool = True):
-    if script_path.exists() and script_path.is_file(): return True
-    msg_func = st.sidebar.error if is_critical else st.sidebar.warning
-    msg_func(f"{'CRITICAL: ' if is_critical else ''}`{script_name}` NOT FOUND at `{script_path}`.")
-    return False
-
-def check_vina_binary(show_success=True):
-    if not VINA_PATH_LOCAL.exists():
-        st.sidebar.error(f"Vina exe NOT FOUND at `{VINA_PATH_LOCAL}`. Ensure `{VINA_EXECUTABLE_NAME}` is in `{VINA_DIR_LOCAL}`.")
-        return False
-    if show_success: st.sidebar.success("Vina binary found")
-
-    if os.access(str(VINA_PATH_LOCAL.resolve()), os.X_OK):
-        if show_success: st.sidebar.success("Vina binary is executable.")
-        return True
-    else:
-        st.sidebar.warning("Vina binary NOT executable by os.access. Attempting permission set...")
-        if make_file_executable(str(VINA_PATH_LOCAL)):
-            if os.access(str(VINA_PATH_LOCAL.resolve()), os.X_OK):
-                st.sidebar.success("Execute permission successfully set for Vina and verified.")
-                return True
-            else:
-                st.sidebar.error("Failed to make Vina executable (os.access still fails after chmod).")
-                st.sidebar.markdown(f"**Manual Action Needed:** `git add --chmod=+x {VINA_DIR_LOCAL.name}/{VINA_EXECUTABLE_NAME}` in your local repo, commit, and push. Or ensure the file has execute permissions in your deployment environment.")
-                return False
-        else:
-            st.sidebar.error("Failed to make Vina executable (chmod call failed).")
-            return False
-
-def get_smiles_from_pubchem_inchikey(inchikey_str):
-    api_url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{inchikey_str}/property/CanonicalSMILES/JSON"
-    try:
-        response = requests.get(api_url, timeout=10)
-        response.raise_for_status(); data = response.json()
-        return data['PropertyTable']['Properties'][0]['CanonicalSMILES']
-    except Exception as e: st.warning(f"PubChem API/parse error for {inchikey_str}: {e}"); return None
-
-def run_ligand_prep_script(script_local_path_str, script_args, process_name, ligand_name_for_log):
-    if not script_local_path_str: st.error(f"{process_name}: Script path undefined."); return False
-    absolute_script_path = str(Path(script_local_path_str).resolve())
-    if not os.path.exists(absolute_script_path):
-        st.error(f"{process_name} script NOT FOUND: {absolute_script_path}"); return False
-
-    if not os.access(absolute_script_path, os.X_OK):
-        if not make_file_executable(absolute_script_path) or not os.access(absolute_script_path, os.X_OK):
-            st.error(f"Failed to make {process_name} script executable. Cannot run.")
-            return False
-
-    command = [sys.executable, absolute_script_path] + [str(arg) for arg in script_args]
-    cwd_path_resolved = str(WORKSPACE_PARENT_DIR.resolve())
-    if not os.path.exists(cwd_path_resolved):
-        st.error(f"Working directory {cwd_path_resolved} for {process_name} missing."); return False
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True, cwd=cwd_path_resolved)
-        if result.stdout.strip():
-            with st.expander(f"{process_name} STDOUT for {ligand_name_for_log}", expanded=False): st.text(result.stdout)
-        return True
-    except subprocess.CalledProcessError as e:
-        st.error(f"Error during {process_name} for {ligand_name_for_log} (RC: {e.returncode}):")
-        with st.expander(f"{process_name} Details (on error)", expanded=True):
-            st.error(f"Command: `{' '.join(e.cmd)}`")
-            st.text("STDOUT:\n" + (e.stdout.strip() or "No STDOUT."))
-            st.text("STDERR:\n" + (e.stderr.strip() or "No STDERR."))
-        return False
-    except Exception as e: st.error(f"Unexpected error running {process_name} for {ligand_name_for_log}: {e}"); return False
-
-def convert_smiles_to_pdbqt(smiles_str, ligand_name_base, output_dir_path_for_final_pdbqt, ph_val, skip_taut, skip_acidbase, local_scrub_script_path, local_mk_prepare_script_path):
-    output_dir_path_for_final_pdbqt.mkdir(parents=True, exist_ok=True)
-    relative_sdf_filename = Path(LIGAND_PREP_DIR_LOCAL.name) / f"{ligand_name_base}_scrubbed.sdf"
-    relative_pdbqt_filename = Path(LIGAND_PREP_DIR_LOCAL.name) / f"{ligand_name_base}.pdbqt"
-
-    absolute_sdf_path_for_check = WORKSPACE_PARENT_DIR / relative_sdf_filename
-    absolute_pdbqt_path_for_return = WORKSPACE_PARENT_DIR / relative_pdbqt_filename
-
-    scrub_options = ["--ph", str(ph_val)]
-    if skip_taut: scrub_options.append("--skip_tautomer")
-    if skip_acidbase: scrub_options.append("--skip_acidbase")
-    # `smiles_str` here is the already standardized SMILES
-    scrub_args = [smiles_str, "-o", str(relative_sdf_filename)] + scrub_options
-
-    if not run_ligand_prep_script(str(local_scrub_script_path), scrub_args, "scrub.py", ligand_name_base): return None
-    if not absolute_sdf_path_for_check.exists():
-        st.error(f"scrub.py did not produce expected output: {absolute_sdf_path_for_check}")
-        return None
-
-    mk_prepare_args = ["-i", str(relative_sdf_filename), "-o", str(relative_pdbqt_filename)]
-    if not run_ligand_prep_script(str(local_mk_prepare_script_path), mk_prepare_args, "mk_prepare_ligand.py", ligand_name_base): return None
-
-    return {"id": smiles_str, "pdbqt_path": str(absolute_pdbqt_path_for_return), "base_name": ligand_name_base} if absolute_pdbqt_path_for_return.exists() else None
-
-def convert_ligand_file_to_pdbqt(input_ligand_file_path_absolute, original_filename, output_dir_path_for_final_pdbqt, local_mk_prepare_script_path):
-    output_dir_path_for_final_pdbqt.mkdir(parents=True, exist_ok=True)
-    ligand_name_base = Path(original_filename).stem
-
-    relative_pdbqt_filename = Path(LIGAND_PREP_DIR_LOCAL.name) / f"{ligand_name_base}.pdbqt"
-    absolute_pdbqt_path_for_return = WORKSPACE_PARENT_DIR / relative_pdbqt_filename
-
-    mk_prepare_args = ["-i", str(Path(input_ligand_file_path_absolute).resolve()), "-o", str(relative_pdbqt_filename)]
-
-    if not run_ligand_prep_script(str(local_mk_prepare_script_path), mk_prepare_args, "mk_prepare_ligand.py", ligand_name_base): return None
-    return {"id": original_filename, "pdbqt_path": str(absolute_pdbqt_path_for_return), "base_name": ligand_name_base} if absolute_pdbqt_path_for_return.exists() else None
-
-def find_paired_config_for_protein(protein_base_name: str, all_config_paths: list[str]) -> Path | None:
-    if not all_config_paths: return None
-    patterns_to_try = [f"{protein_base_name}.txt", f"config_{protein_base_name}.txt", f"{protein_base_name}_config.txt"]
-    for pattern in patterns_to_try:
-        for cfg_path_str in all_config_paths:
-            cfg_file = Path(cfg_path_str)
-            if cfg_file.name.lower() == pattern.lower(): return cfg_file
-    for cfg_path_str in all_config_paths:
-        cfg_file = Path(cfg_path_str)
-        if cfg_file.suffix.lower() == ".txt" and protein_base_name.lower() in cfg_file.stem.lower():
-            if "config" in cfg_file.stem.lower() or cfg_file.stem.lower() == protein_base_name.lower(): return cfg_file
-    return None
-
-@st.cache_data
-def convert_df_to_csv(df):
-    return df.to_csv(index=False).encode('utf-8')
-
-def parse_score_from_pdbqt(pdbqt_file_path: str) -> float | None:
-    try:
-        resolved_path = Path(pdbqt_file_path).resolve()
-        if not resolved_path.exists():
-            st.warning(f"PDBQT file for score parsing not found: {resolved_path}")
-            return None
-        if resolved_path.stat().st_size == 0:
-            st.warning(f"PDBQT file for score parsing is empty: {resolved_path}")
-            return None
-
-        with open(resolved_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
-        for i, line_content in enumerate(lines):
-            current_line_stripped = line_content.strip()
-            if current_line_stripped.upper().startswith("REMARK VINA RESULT:"):
-                parts = current_line_stripped.split(':', 1)
-                if len(parts) > 1:
-                    score_values_str = parts[1].strip()
-                    score_values_list = score_values_str.split()
-                    if score_values_list:
-                        try:
-                            score = float(score_values_list[0])
-                            return score
-                        except ValueError:
-                            st.warning(f"ValueError converting score part '{score_values_list[0]}' to float in {resolved_path.name} on line {i+1}.")
-                            return None
-                    else:
-                        st.warning(f"Score part list is empty after split for VINA RESULT line in {resolved_path.name}.")
-                        return None
-                else:
-                    st.warning(f"'REMARK VINA RESULT:' found, but line splitting by ':' failed in {resolved_path.name}.")
-                    return None
-
-        st.warning(f"Could not find 'REMARK VINA RESULT:' in {resolved_path.name}.")
-        return None
-
-    except Exception as e:
-        st.error(f"Unexpected error parsing PDBQT file {Path(pdbqt_file_path).name}: {e}")
-        return None
+from utils.prediction_utils import (
+    calculate_mordred_descriptors, calculate_ecfp4_fingerprints,
+    load_and_prepare_train_data_desc, align_input_descriptors, generate_pca_plot
+)
 
 def display_ensemble_docking_procedure():
     st.header(f"Ensemble AutoDock Vina Docking (App v{APP_VERSION})")
     st.markdown("---")
-    initialize_directories()
+    # initialize_directories is called at the start of main for all modes now.
 
     if 'prepared_ligand_details_list' not in st.session_state:
         st.session_state.prepared_ligand_details_list = []
     if 'docking_run_outputs' not in st.session_state:
         st.session_state.docking_run_outputs = []
-    if 'invalid_smiles_during_standardization' not in st.session_state: # To track SMILES that failed standardization
+    if 'invalid_smiles_during_standardization' not in st.session_state:
         st.session_state.invalid_smiles_during_standardization = []
-
 
     with st.sidebar:
         st.header("⚙️ Docking Setup")
@@ -336,7 +71,7 @@ def display_ensemble_docking_procedure():
         if receptor_fetch_method == "All from GitHub":
             if st.button("Fetch All Receptors", key="fetch_all_receptors_auto_dockpage", help=f"Fetches all .pdbqt from .../{receptor_dir_in_repo}"):
                 st.session_state.fetched_receptor_paths = []
-                with st.spinner(f"Listing .pdbqt files..."): receptor_filenames = list_files_from_github_repo_dir(GH_OWNER, GH_REPO, receptor_dir_in_repo, GH_BRANCH, ".pdbqt")
+                with st.spinner(f"Listing .pdbqt files..."): receptor_filenames = list_files_from_github_repo_dir(GH_OWNER, GH_REPO, receptor_dir_in_repo, GH_BRANCH, GH_API_BASE_URL, ".pdbqt")
                 if receptor_filenames:
                     temp_paths = []; st.success(f"Found {len(receptor_filenames)} receptors. Downloading...")
                     with st.spinner(f"Downloading..."):
@@ -370,7 +105,7 @@ def display_ensemble_docking_procedure():
         if config_fetch_method == "All .txt from GitHub":
             if st.button("Fetch All Configs", key="fetch_all_configs_auto_dockpage", help=f"Fetches all .txt from .../{config_dir_in_repo}"):
                 st.session_state.fetched_config_paths = []
-                with st.spinner(f"Listing .txt files..."): config_filenames = list_files_from_github_repo_dir(GH_OWNER, GH_REPO, config_dir_in_repo, GH_BRANCH, ".txt")
+                with st.spinner(f"Listing .txt files..."): config_filenames = list_files_from_github_repo_dir(GH_OWNER, GH_REPO, config_dir_in_repo, GH_BRANCH, GH_API_BASE_URL, ".txt")
                 if config_filenames:
                     temp_paths = []; st.success(f"Found {len(config_filenames)} configs. Downloading...")
                     with st.spinner(f"Downloading..."):
@@ -400,7 +135,7 @@ def display_ensemble_docking_procedure():
 
         if st.button("Clear All Prepared Ligands", key="clear_ligands_btn"):
             st.session_state.prepared_ligand_details_list = []
-            st.session_state.invalid_smiles_during_standardization = [] # Also clear invalid SMILES list
+            st.session_state.invalid_smiles_during_standardization = []
             st.success("All prepared ligands and invalid SMILES records have been cleared.")
         st.markdown("---")
 
@@ -413,7 +148,7 @@ def display_ensemble_docking_procedure():
 
     g_ph_val, g_skip_tautomer, g_skip_acidbase = 7.4, False, False
     if ligand_input_method in ["SMILES String", "SMILES File (.txt)"]:
-        with st.expander("SMILES Protonation Options (via scrub.py)", expanded=False): # Clarified this is for scrub.py
+        with st.expander("SMILES Protonation Options (via scrub.py)", expanded=False):
             g_ph_val = st.number_input("pH for scrub.py", value=7.4, key="g_ph_val_main_ph", format="%.1f")
             g_skip_tautomer = st.checkbox("scrub.py: Skip tautomers", key="g_skip_taut_main_taut")
             g_skip_acidbase = st.checkbox("scrub.py: Skip protomers", key="g_skip_ab_main_ab")
@@ -424,7 +159,7 @@ def display_ensemble_docking_procedure():
         lig_name_base_input = st.text_input("Ligand Base Name:", value="ligand_smiles", key="lig_name_main_name_lig")
         if st.button("Prepare & Add This SMILES Ligand", key="prep_add_smiles_main_btn_lig"):
             _current_batch_processed_details = []
-            st.session_state.invalid_smiles_during_standardization = [] # Reset for this batch
+            st.session_state.invalid_smiles_during_standardization = [] 
 
             if not inchikey_or_smiles_val.strip():
                 st.warning("Please enter a SMILES string or InChIKey.")
@@ -435,15 +170,13 @@ def display_ensemble_docking_procedure():
             else:
                 original_input_smiles = inchikey_or_smiles_val
                 actual_smiles_to_process = inchikey_or_smiles_val
-
                 if use_inchikey:
                     with st.spinner(f"Fetching SMILES for InChIKey {inchikey_or_smiles_val}..."):
                         actual_smiles_to_process = get_smiles_from_pubchem_inchikey(inchikey_or_smiles_val)
                     if not actual_smiles_to_process:
                         st.error(f"Could not retrieve SMILES for InChIKey: {inchikey_or_smiles_val}")
                         st.session_state.invalid_smiles_during_standardization.append(original_input_smiles + " (InChIKey fetch failed)")
-
-
+                
                 if actual_smiles_to_process:
                     st.info(f"Original SMILES for {lig_name_base_input}: {actual_smiles_to_process}")
                     standardized_s = standardize_smiles_rdkit(actual_smiles_to_process, st.session_state.invalid_smiles_during_standardization)
@@ -451,7 +184,7 @@ def display_ensemble_docking_procedure():
                         st.info(f"Standardized SMILES for {lig_name_base_input}: {standardized_s}")
                         detail = convert_smiles_to_pdbqt(standardized_s, lig_name_base_input, LIGAND_PREP_DIR_LOCAL, g_ph_val, g_skip_tautomer, g_skip_acidbase, SCRUB_PY_LOCAL_PATH, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
                         if detail:
-                            detail['id'] = standardized_s # Use standardized SMILES as ID
+                            detail['id'] = standardized_s 
                             _current_batch_processed_details.append(detail)
                             st.success(f"SMILES ligand '{lig_name_base_input}' prepared: {Path(detail['pdbqt_path']).name}")
                         else:
@@ -463,9 +196,9 @@ def display_ensemble_docking_procedure():
                 st.session_state.prepared_ligand_details_list.extend(_current_batch_processed_details)
                 st.success(f"Added {len(_current_batch_processed_details)} ligand(s). Total ready: {len(st.session_state.prepared_ligand_details_list)}")
             if st.session_state.invalid_smiles_during_standardization:
-                 with st.expander(f"{len(st.session_state.invalid_smiles_during_standardization)} SMILES failed standardization/fetch", expanded=True):
-                    for failed_smi in st.session_state.invalid_smiles_during_standardization: st.caption(f"- {failed_smi}")
-            elif not (not inchikey_or_smiles_val.strip() or not lig_name_base_input.strip() or (not scrub_py_ok or not mk_prepare_ligand_py_ok) or not actual_smiles_to_process) and not _current_batch_processed_details:
+                    with st.expander(f"{len(st.session_state.invalid_smiles_during_standardization)} SMILES failed standardization/fetch", expanded=True):
+                        for failed_smi in st.session_state.invalid_smiles_during_standardization: st.caption(f"- {failed_smi}")
+            elif not (not inchikey_or_smiles_val.strip() or not lig_name_base_input.strip() or (not scrub_py_ok or not mk_prepare_ligand_py_ok) or (use_inchikey and not actual_smiles_to_process)) and not _current_batch_processed_details :
                 st.warning("No ligands were successfully prepared and added in this step.")
 
 
@@ -473,7 +206,7 @@ def display_ensemble_docking_procedure():
         uploaded_smiles_file = st.file_uploader("Upload SMILES file (.txt, one SMILES per line):", type="txt", key="smiles_uploader_main_file_lig")
         if st.button("Process & Add SMILES File", key="process_add_smiles_file_btn"):
             _current_batch_processed_details = []
-            st.session_state.invalid_smiles_during_standardization = [] # Reset for this batch
+            st.session_state.invalid_smiles_during_standardization = [] 
 
             if not uploaded_smiles_file:
                 st.warning("Please upload a SMILES file first.")
@@ -496,7 +229,7 @@ def display_ensemble_docking_procedure():
                                 st.info(f"Standardized SMILES for {lig_name_base}: {standardized_s}")
                                 detail = convert_smiles_to_pdbqt(standardized_s, lig_name_base, LIGAND_PREP_DIR_LOCAL, g_ph_val, g_skip_tautomer, g_skip_acidbase, SCRUB_PY_LOCAL_PATH, MK_PREPARE_LIGAND_PY_LOCAL_PATH)
                                 if detail:
-                                    detail['id'] = standardized_s # Use standardized SMILES as ID
+                                    detail['id'] = standardized_s 
                                     _current_batch_processed_details.append(detail)
                                     st.success(f"SMILES ligand '{lig_name_base}' prepared: {Path(detail['pdbqt_path']).name}")
                                 else:
@@ -681,20 +414,22 @@ def display_ensemble_docking_procedure():
                                     str(config_to_use.resolve()), 
                                     protein_base]
                         try:
-                            path_to_ligand_list_for_perl_stdin = str(ligand_list_file_for_perl.resolve()) + "\n"                            
+                            path_to_ligand_list_for_perl_stdin = str(ligand_list_file_for_perl.resolve()) + "\n" 
                             proc = subprocess.run(cmd_perl, 
-                                                  input=path_to_ligand_list_for_perl_stdin, 
-                                                  capture_output=True, 
-                                                  text=True, 
-                                                  check=False, 
-                                                  cwd=str(WORKSPACE_PARENT_DIR.resolve()))
+                                                input=path_to_ligand_list_for_perl_stdin, 
+                                                capture_output=True, 
+                                                text=True, 
+                                                check=False, # Check manually
+                                                cwd=str(WORKSPACE_PARENT_DIR.resolve()))
                             
                             return_code_perl = proc.returncode
                             stdout_p = proc.stdout
-                            stderr_p = proc.stderr
+                            stderr_p = proc.stderr # Capture stderr as well
                             
                             if stdout_p.strip():
                                 with st.expander(f"Perl STDOUT for {protein_base}", expanded=False): st.text(stdout_p)
+                            if stderr_p.strip(): # Show STDERR if any
+                                with st.expander(f"Perl STDERR for {protein_base}", expanded=True): st.text(stderr_p)
                             
                             if return_code_perl != 0: 
                                 st.error(f"Perl script execution failed for `{protein_base}` (RC: {return_code_perl}). Review STDOUT/STDERR above for details.")
@@ -706,7 +441,7 @@ def display_ensemble_docking_procedure():
                                     possible_pdbqt_names = [
                                         f"{lig_detail['base_name']}-{protein_base}_out.pdbqt", 
                                         f"{lig_detail['base_name']}_{protein_base}_out.pdbqt", 
-                                        f"{lig_detail['base_name']}_out.pdbqt",             
+                                        f"{lig_detail['base_name']}_out.pdbqt", 
                                         f"{Path(lig_detail['pdbqt_path']).stem}_{protein_base}_out.pdbqt" 
                                     ]
                                     
@@ -813,7 +548,7 @@ def display_ensemble_docking_procedure():
                                 st.error(f"Vina output file MISSING or EMPTY: {output_pdbqt_docked.name} after Vina run.")
 
                             if output_pdbqt_docked.exists() and output_pdbqt_docked.stat().st_size > 0: 
-                                 with open(output_pdbqt_docked, "rb") as fp: st.download_button(f"DL Docked PDBQT ({output_base_name})", fp, output_pdbqt_docked.name, "application/octet-stream", key=f"dl_pdbqt_{job_counter}_direct")
+                                with open(output_pdbqt_docked, "rb") as fp: st.download_button(f"DL Docked PDBQT ({output_base_name})", fp, output_pdbqt_docked.name, "application/octet-stream", key=f"dl_pdbqt_{job_counter}_direct")
 
                         except subprocess.CalledProcessError as e_vina:
                             st.error(f"VINA JOB FAILED for {output_base_name} (RC: {e_vina.returncode}).")
@@ -858,21 +593,141 @@ def display_ensemble_docking_procedure():
             st.header("🏁 Docking Run Finished 🏁")
             st.caption(f"Docked PDBQTs (direct Vina) in `{DOCKING_OUTPUT_DIR_LOCAL.name}/`. Perl script outputs in `{WORKSPACE_PARENT_DIR.name}/<protein_base_name>/`.")
 
+
+def display_prediction_model_procedure():
+    st.header(f"🧪 Prediction Model Insights (App v{APP_VERSION})")
+    st.markdown("---")
+    st.subheader("🧬 Input SMILES for Feature Calculation")
+
+    if 'pred_invalid_smiles' not in st.session_state:
+        st.session_state.pred_invalid_smiles = []
+    if 'pred_std_smiles_list' not in st.session_state:
+        st.session_state.pred_std_smiles_list = []
+    
+    input_smiles_list_for_pred = []
+
+    smiles_input_method_pred = st.radio(
+        "Choose SMILES input method for prediction:",
+        ("SMILES String", "SMILES File (.txt)"),
+        key="smiles_input_method_pred", horizontal=True
+    )
+
+    if smiles_input_method_pred == "SMILES String":
+        smiles_string_pred = st.text_input("Enter SMILES string:", key="smiles_string_pred_input")
+        if smiles_string_pred.strip():
+            input_smiles_list_for_pred.append(smiles_string_pred.strip())
+    
+    elif smiles_input_method_pred == "SMILES File (.txt)":
+        uploaded_smiles_file_pred = st.file_uploader(
+            "Upload SMILES file (.txt, one SMILES per line):",
+            type="txt", key="smiles_file_pred_uploader"
+        )
+        if uploaded_smiles_file_pred:
+            try:
+                smiles_from_file = uploaded_smiles_file_pred.getvalue().decode("utf-8").splitlines()
+                input_smiles_list_for_pred.extend([s.strip() for s in smiles_from_file if s.strip()])
+            except Exception as e:
+                st.error(f"Error reading SMILES file: {e}")
+
+    if st.button("Calculate Features & Generate PCA Plot", key="calc_features_pca_btn"):
+        if not input_smiles_list_for_pred:
+            st.warning("Please provide SMILES input.")
+            return
+
+        st.session_state.pred_std_smiles_list = []
+        st.session_state.pred_invalid_smiles = []
+        
+        with st.spinner("Standardizing SMILES..."):
+            for smi in input_smiles_list_for_pred:
+                std_smi = standardize_smiles_rdkit(smi, st.session_state.pred_invalid_smiles)
+                if std_smi:
+                    st.session_state.pred_std_smiles_list.append(std_smi)
+        
+        if st.session_state.pred_invalid_smiles:
+            with st.expander(f"{len(st.session_state.pred_invalid_smiles)} SMILES failed standardization", expanded=True):
+                for failed_smi in st.session_state.pred_invalid_smiles:
+                    st.caption(f"- {failed_smi}")
+        
+        if not st.session_state.pred_std_smiles_list:
+            st.error("No valid SMILES available after standardization to proceed with feature calculation.")
+            return
+
+        st.success(f"Successfully standardized {len(st.session_state.pred_std_smiles_list)} SMILES.")
+        
+        mols_for_features = [Chem.MolFromSmiles(s) for s in st.session_state.pred_std_smiles_list]
+        mols_for_features = [m for m in mols_for_features if m is not None] # Filter out None mols if any slipped through
+
+        if not mols_for_features:
+            st.error("Could not generate RDKit molecules from standardized SMILES.")
+            return
+
+        # Calculate Mordred descriptors for input
+        with st.spinner("Calculating Mordred descriptors for input SMILES..."):
+            df_input_mordred = calculate_mordred_descriptors(mols_for_features)
+            if df_input_mordred.empty:
+                st.error("Failed to calculate Mordred descriptors for input SMILES.")
+                return
+            # Add original SMILES as index if desired for tracking, though not used in PCA directly
+            df_input_mordred.index = st.session_state.pred_std_smiles_list[:len(df_input_mordred)]
+
+
+        # Calculate ECFP4 fingerprints for input
+        with st.spinner("Calculating ECFP4 fingerprints for input SMILES..."):
+            df_input_ecfp4 = calculate_ecfp4_fingerprints(mols_for_features)
+            if df_input_ecfp4.empty:
+                st.warning("Failed to calculate ECFP4 fingerprints for input SMILES (this is not used in PCA plot).")
+            # df_input_ecfp4.index = st.session_state.pred_std_smiles_list[:len(df_input_ecfp4)]
+
+
+        # Load and prepare training data descriptors
+        with st.spinner("Loading reference training data for PCA..."):
+            df_train_descriptors, train_descriptor_names = load_and_prepare_train_data_desc()
+        
+        if df_train_descriptors is None or not train_descriptor_names:
+            st.error("Could not load or prepare training data descriptors. Cannot proceed with PCA.")
+            return
+
+        # Align input Mordred descriptors with training data columns
+        df_input_mordred_aligned = align_input_descriptors(df_input_mordred, train_descriptor_names)
+
+        if df_input_mordred_aligned.empty and not df_input_mordred.empty:
+             st.warning("Input Mordred descriptors could not be aligned with training set columns (e.g. no common descriptors). PCA might not be meaningful.")
+        elif df_input_mordred_aligned.empty:
+             st.error("Aligned input Mordred descriptors are empty. Cannot generate PCA.")
+             return
+
+
+        # Generate and display PCA plot
+        st.subheader("Principal Component Analysis (PCA) Plot")
+        st.markdown("Comparing your input SMILES descriptors against the BACE dataset descriptors.")
+        with st.spinner("Generating PCA plot..."):
+            generate_pca_plot(df_train_descriptors, df_input_mordred_aligned)
+
+
 def display_about_page():
     st.header("About This Application")
     st.markdown(f"**Ensemble AutoDock Vina App - v{APP_VERSION}**")
     st.markdown("""
-    This application facilitates molecular docking simulations using AutoDock Vina,
-    allowing for ensemble docking approaches.
+    This application facilitates molecular docking simulations using AutoDock Vina and provides tools for chemical feature analysis.
+    
     **Features:**
-    - Preparation of ligands from SMILES strings (with RDKit standardization) or various file formats.
-    - Docking against one or multiple receptor structures.
-    - Utilization of specific or multiple Vina configuration files.
-    - Options for using a Perl-based screening script or direct Vina calls.
-    - Summarization of best docking scores per ligand.
-    **Repository Structure Example:**
-    - `your_app_root/`
+    - **Ensemble Docking:**
+        - Preparation of ligands from SMILES strings (with RDKit standardization) or various file formats.
+        - Docking against one or multiple receptor structures.
+        - Utilization of specific or multiple Vina configuration files.
+        - Options for using a Perl-based screening script or direct Vina calls.
+        - Summarization of best docking scores per ligand.
+    - **Prediction Model Insights:**
+        - Standardization of input SMILES.
+        - Calculation of 2D Mordred descriptors and ECFP4 fingerprints.
+        - PCA visualization of input SMILES' Mordred descriptors against a reference BACE dataset.
+
+    **File Structure Expectation (Example):**
+    - `your_project_root/`
         - `streamlit_app.py` (this file)
+        - `paths.py` (stores path constants)
+        - `app_utils.py` (utility functions for docking)
+        - `prediction_utils.py` (utility functions for prediction/feature analysis)
         - `ensemble_docking/`
             - `ligand_preprocessing/scrub.py`
             - `ligand_preprocessing/mk_prepare_ligand.py`
@@ -880,21 +735,24 @@ def display_about_page():
         - `vina/vina_1.2.5_linux_x86_64` (Vina executable, `chmod +x`)
         - `autodock_workspace/` (created for temporary files, fetched assets)
         - `autodock_outputs/` (created for PDBQT outputs from direct Vina calls)
-        - `requirements.txt` (must include `rdkit-pypi` if using RDKit standardization)
-        - `packages.txt` (e.g., for Streamlit Community Cloud: `perl`)
+        - `requirements.txt` (e.g., `streamlit`, `pandas`, `rdkit-pypi`, `mordred`, `scikit-learn`, `matplotlib`, `requests`)
+        - `packages.txt` (for Streamlit Cloud, e.g., `perl` if using the Perl script)
     """)
-    st.markdown(f"**Key Local Paths Used (resolved):**\n"
-                f"- App Root: `{APP_ROOT.resolve()}`\n"
+    st.markdown(f"**Key Local Paths Used (resolved from `APP_ROOT` = `{APP_ROOT.resolve()}`):**\n"
                 f"- Workspace Parent: `{WORKSPACE_PARENT_DIR.resolve()}`\n"
                 f"- Vina Executable: `{VINA_PATH_LOCAL.resolve()}`\n"
                 f"- Direct Vina Output PDBQTs: `{DOCKING_OUTPUT_DIR_LOCAL.resolve()}`")
 
 def main():
     st.set_page_config(layout="wide", page_title=f"Ensemble Vina Docking v{APP_VERSION}")
-    st.sidebar.image("https://raw.githubusercontent.com/HenryChritopher02/bace1/main/logo.png", width=100)
-    st.sidebar.title("Docking Suite")
+    
+    # Initialize directories once at the start
+    initialize_directories()
 
-    app_mode_options = ("Ensemble Docking", "About")
+    st.sidebar.image("https://raw.githubusercontent.com/HenryChritopher02/bace1/main/logo.png", width=100) # Ensure this link is valid
+    st.sidebar.title("Molecular Suite")
+
+    app_mode_options = ("Ensemble Docking", "Prediction Model", "About") # Added "Prediction Model"
     app_mode_default = app_mode_options[0] 
     app_mode = st.sidebar.radio(
         "Select Procedure:", app_mode_options,
@@ -906,6 +764,8 @@ def main():
 
     if app_mode == "Ensemble Docking":
         display_ensemble_docking_procedure()
+    elif app_mode == "Prediction Model":
+        display_prediction_model_procedure()
     elif app_mode == "About":
         display_about_page()
 
