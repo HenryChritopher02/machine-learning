@@ -750,7 +750,7 @@ def main():
     initialize_directories()
 
     st.sidebar.image("https://raw.githubusercontent.com/HenryChritopher02/bace1/main/logo.png", width=100) # Ensure this link is valid
-    st.sidebar.title("Molecular Suite")
+    st.sidebar.title("Categories")
 
     app_mode_options = ("Ensemble Docking", "Prediction Model", "About") # Added "Prediction Model"
     app_mode_default = app_mode_options[0] 
