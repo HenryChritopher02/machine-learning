@@ -709,12 +709,12 @@ def display_ensemble_docking_procedure():
                             stdout_p = proc.stdout
                             stderr_p = proc.stderr
                             
-                            st.info(f"Perl script for `{protein_base}` completed with RC: {return_code_perl}.")
+                            #st.info(f"Perl script for `{protein_base}` completed with RC: {return_code_perl}.")
                             if stdout_p.strip():
                                 with st.expander(f"Perl STDOUT for {protein_base}", expanded=False): st.text(stdout_p)
-                            if stderr_p.strip(): 
-                                st.warning(f"Perl script for `{protein_base}` produced STDERR (RC: {return_code_perl}):")
-                                with st.expander(f"Perl STDERR for {protein_base}", expanded=True): st.text(stderr_p)
+                            # if stderr_p.strip(): 
+                            #     st.warning(f"Perl script for `{protein_base}` produced STDERR (RC: {return_code_perl}):")
+                            #     with st.expander(f"Perl STDERR for {protein_base}", expanded=True): st.text(stderr_p)
                             
                             if return_code_perl != 0: 
                                 st.error(f"Perl script execution failed for `{protein_base}` (RC: {return_code_perl}). Review STDOUT/STDERR above for details.")
