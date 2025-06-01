@@ -152,7 +152,7 @@ def run_ligand_prep_script(script_local_path_str, script_args, process_name, lig
     if not os.path.exists(cwd_path_resolved):
         st.error(f"Working directory {cwd_path_resolved} for {process_name} missing."); return False
     try:
-        st.info(f"Running {process_name} for {ligand_name_for_log}...")
+        #st.info(f"Running {process_name} for {ligand_name_for_log}...")
         result = subprocess.run(command, capture_output=True, text=True, check=True, cwd=cwd_path_resolved)
         if result.stdout.strip():
             with st.expander(f"{process_name} STDOUT for {ligand_name_for_log}", expanded=False): st.text(result.stdout)
