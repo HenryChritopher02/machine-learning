@@ -1,7 +1,7 @@
 streamlit
-meeko==0.6.1
+meeko
 mordred
-numpy==1.25.0
+numpy==1.24.4
 pandas
 scikit-learn
 molscrub
