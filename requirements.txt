@@ -12,3 +12,4 @@ requests
 molscrub
 matplotlib
 setuptools
+huggingface_hub
