@@ -208,8 +208,8 @@ def run_ligand_prep_script(script_local_path_str, script_args, process_name, lig
         if result.stdout.strip():
             with st.expander(f"{process_name} STDOUT for {ligand_name_for_log}", expanded=False): st.text(result.stdout)
         # Only show STDERR if it seems like an error or significant warning
-        if result.stderr.strip() and ("error" in result.stderr.lower() or "warning" in result.stderr.lower() or "fail" in result.stderr.lower()):
-            with st.expander(f"{process_name} STDERR for {ligand_name_for_log}", expanded=True): st.text(result.stderr)
+        # if result.stderr.strip() and ("error" in result.stderr.lower() or "warning" in result.stderr.lower() or "fail" in result.stderr.lower()):
+        #     with st.expander(f"{process_name} STDERR for {ligand_name_for_log}", expanded=True): st.text(result.stderr)
         return True
     except subprocess.CalledProcessError as e:
         st.error(f"Error during {process_name} for {ligand_name_for_log} (RC: {e.returncode}):")
