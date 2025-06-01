@@ -1,5 +1,6 @@
 streamlit
 meeko==0.6.1
+mordred
 numpy
 pandas
 scikit-learn
@@ -10,4 +11,3 @@ joblib
 requests
 molscrub
 matplotlib
-mordred
