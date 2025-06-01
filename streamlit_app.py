@@ -582,7 +582,7 @@ def display_ensemble_docking_procedure():
                     with open(ligand_list_file_for_perl, "w") as f_list:
                         for lig_detail in final_ligand_details_list_for_run:
                             f_list.write(str(Path(lig_detail['pdbqt_path']).resolve()) + "\n")
-                    st.caption(f"Perl ligand list file created: '{ligand_list_file_for_perl.name}'")
+                    #st.caption(f"Perl ligand list file created: '{ligand_list_file_for_perl.name}'")
 
                     overall_docking_progress = st.progress(0)
                     receptors_processed_count = 0; skipped_receptor_count = 0
@@ -595,7 +595,7 @@ def display_ensemble_docking_procedure():
                         else: config_to_use = find_paired_config_for_protein(protein_base, current_configs_for_run)
 
                         if not config_to_use: st.warning(f"No paired config for `{receptor_file.name}`. Skipping."); skipped_receptor_count +=1; overall_docking_progress.progress((i_rec + 1) / len(current_receptors_for_run)); continue
-                        st.caption(f"Using config: `{config_to_use.name}`")
+                        #st.caption(f"Using config: `{config_to_use.name}`")
 
                         temp_receptor_path_for_perl = WORKSPACE_PARENT_DIR / receptor_file.name
                         shutil.copy(receptor_file, temp_receptor_path_for_perl)
@@ -607,7 +607,7 @@ def display_ensemble_docking_procedure():
                                     protein_base]
                         try:
                             path_to_ligand_list_for_perl_stdin = str(ligand_list_file_for_perl.resolve()) + "\n"
-                            st.caption(f"Path being passed to Perl STDIN: {path_to_ligand_list_for_perl_stdin.strip()}")
+                            #st.caption(f"Path being passed to Perl STDIN: {path_to_ligand_list_for_perl_stdin.strip()}")
                             
                             proc = subprocess.run(cmd_perl, 
                                                   input=path_to_ligand_list_for_perl_stdin, 
@@ -620,19 +620,19 @@ def display_ensemble_docking_procedure():
                             stdout_p = proc.stdout
                             stderr_p = proc.stderr
                             
-                            st.info(f"Perl script for `{protein_base}` completed with RC: {return_code_perl}.")
+                            #st.info(f"Perl script for `{protein_base}` completed with RC: {return_code_perl}.")
                             if stdout_p.strip():
                                 with st.expander(f"Perl STDOUT for {protein_base}", expanded=False): st.text(stdout_p)
                             if stderr_p.strip(): 
-                                st.warning(f"Perl script for `{protein_base}` produced STDERR (RC: {return_code_perl}):")
-                                with st.expander(f"Perl STDERR for {protein_base}", expanded=True): st.text(stderr_p)
+                                #st.warning(f"Perl script for `{protein_base}` produced STDERR (RC: {return_code_perl}):")
+                                #with st.expander(f"Perl STDERR for {protein_base}", expanded=True): st.text(stderr_p)
                             
                             if return_code_perl != 0: 
                                 st.error(f"Perl script execution failed for `{protein_base}` (RC: {return_code_perl}). Review STDOUT/STDERR above for details.")
                             
                             perl_protein_out_dir = WORKSPACE_PARENT_DIR / protein_base 
                             if perl_protein_out_dir.is_dir():
-                                st.info(f"Perl: Output directory for {protein_base} found: {perl_protein_out_dir}")
+                                #st.info(f"Perl: Output directory for {protein_base} found: {perl_protein_out_dir}")
                                 for lig_detail in final_ligand_details_list_for_run:
                                     score = None
                                     possible_pdbqt_names = [
@@ -646,14 +646,14 @@ def display_ensemble_docking_procedure():
                                     for pdbqt_name_pattern in possible_pdbqt_names:
                                         current_expected_pdbqt_file = perl_protein_out_dir / pdbqt_name_pattern
                                         if current_expected_pdbqt_file.exists():
-                                            st.caption(f"Perl: Found PDBQT '{current_expected_pdbqt_file.name}', attempting to parse.")
+                                            #st.caption(f"Perl: Found PDBQT '{current_expected_pdbqt_file.name}', attempting to parse.")
                                             score = parse_score_from_pdbqt(str(current_expected_pdbqt_file))
                                             if score is not None:
                                                 expected_pdbqt_file_found_path = current_expected_pdbqt_file
                                                 break 
                                     
                                     if score is not None and expected_pdbqt_file_found_path:
-                                        st.info(f"Perl: Score {score} for '{lig_detail['base_name']}' (protein '{protein_base}') from PDBQT '{expected_pdbqt_file_found_path.name}'.")
+                                        #st.info(f"Perl: Score {score} for '{lig_detail['base_name']}' (protein '{protein_base}') from PDBQT '{expected_pdbqt_file_found_path.name}'.")
                                         st.session_state.docking_run_outputs.append({
                                             "ligand_id": lig_detail["id"],
                                             "ligand_base_name": lig_detail["base_name"],
