@@ -629,7 +629,8 @@ def display_prediction_model_procedure():
             except Exception as e:
                 st.error(f"Error reading SMILES file: {e}")
 
-    if st.button("Calculate Features & Generate PCA Plot", key="calc_features_pca_btn"):
+    # Combined button for all predictions based on input SMILES
+    if st.button("Process SMILES & Generate Predictions", key="process_all_predictions_btn"):
         if not input_smiles_list_for_pred:
             st.warning("Please provide SMILES input.")
             return
@@ -639,6 +640,7 @@ def display_prediction_model_procedure():
         
         with st.spinner("Standardizing SMILES..."):
             for smi in input_smiles_list_for_pred:
+                # Ensure standardize_smiles_rdkit is imported from app_utils
                 std_smi = standardize_smiles_rdkit(smi, st.session_state.pred_invalid_smiles)
                 if std_smi:
                     st.session_state.pred_std_smiles_list.append(std_smi)
@@ -649,60 +651,66 @@ def display_prediction_model_procedure():
                     st.caption(f"- {failed_smi}")
         
         if not st.session_state.pred_std_smiles_list:
-            st.error("No valid SMILES available after standardization to proceed with feature calculation.")
+            st.error("No valid SMILES available after standardization to proceed.")
             return
 
         st.success(f"Successfully standardized {len(st.session_state.pred_std_smiles_list)} SMILES.")
         
         mols_for_features = [Chem.MolFromSmiles(s) for s in st.session_state.pred_std_smiles_list]
-        mols_for_features = [m for m in mols_for_features if m is not None] # Filter out None mols if any slipped through
+        mols_for_features = [m for m in mols_for_features if m is not None]
 
         if not mols_for_features:
-            st.error("Could not generate RDKit molecules from standardized SMILES.")
-            return
+            st.error("Could not generate RDKit molecules from standardized SMILES for descriptor calculation.")
+            # Continue to GNN if st.session_state.pred_std_smiles_list is not empty
+        else:
+            # --- Mordred Descriptors and PCA Plot ---
+            st.markdown("---")
+            st.subheader("🔬 Mordred Descriptors & PCA Analysis")
+            with st.spinner("Calculating Mordred descriptors & ECFP4 fingerprints..."):
+                df_input_mordred = calculate_mordred_descriptors(mols_for_features) # from prediction_utils
+                df_input_ecfp4 = calculate_ecfp4_fingerprints(mols_for_features)   # from prediction_utils
 
-        # Calculate Mordred descriptors for input
-        with st.spinner("Calculating Mordred descriptors for input SMILES..."):
-            df_input_mordred = calculate_mordred_descriptors(mols_for_features)
-            if df_input_mordred.empty:
-                st.error("Failed to calculate Mordred descriptors for input SMILES.")
-                return
-            # Add original SMILES as index if desired for tracking, though not used in PCA directly
-            df_input_mordred.index = st.session_state.pred_std_smiles_list[:len(df_input_mordred)]
-
-
-        # Calculate ECFP4 fingerprints for input
-        with st.spinner("Calculating ECFP4 fingerprints for input SMILES..."):
-            df_input_ecfp4 = calculate_ecfp4_fingerprints(mols_for_features)
-            if df_input_ecfp4.empty:
-                st.warning("Failed to calculate ECFP4 fingerprints for input SMILES (this is not used in PCA plot).")
-            # df_input_ecfp4.index = st.session_state.pred_std_smiles_list[:len(df_input_ecfp4)]
+                if df_input_mordred.empty:
+                    st.warning("Failed to calculate Mordred descriptors. PCA plot may not be generated.")
+                else:
+                    df_input_mordred.index = st.session_state.pred_std_smiles_list[:len(df_input_mordred)]
+                    # Optionally display Mordred/ECFP4 info
+                    # st.write("First 5 Mordred descriptors (sample):", df_input_mordred.head())
+                    # st.write("First 5 ECFP4 fingerprints (sample):", df_input_ecfp4.head())
 
 
-        # Load and prepare training data descriptors
-        with st.spinner("Loading reference training data for PCA..."):
-            df_train_descriptors, train_descriptor_names = load_and_prepare_train_data_desc()
-        
-        if df_train_descriptors is None or not train_descriptor_names:
-            st.error("Could not load or prepare training data descriptors. Cannot proceed with PCA.")
-            return
+            with st.spinner("Loading reference data and generating PCA plot..."):
+                df_train_descriptors, train_descriptor_names = load_and_prepare_train_data_desc() # from prediction_utils
+            
+            if df_train_descriptors is not None and train_descriptor_names:
+                if not df_input_mordred.empty:
+                    df_input_mordred_aligned = align_input_descriptors(df_input_mordred, train_descriptor_names) # from prediction_utils
+                    generate_pca_plot(df_train_descriptors, df_input_mordred_aligned) # from prediction_utils
+                else:
+                    st.warning("Skipping PCA plot as input Mordred descriptors could not be calculated.")
+                    generate_pca_plot(df_train_descriptors, pd.DataFrame()) # Show only train data if input failed
+            else:
+                st.error("Could not load training data for PCA plot.")
 
-        # Align input Mordred descriptors with training data columns
-        df_input_mordred_aligned = align_input_descriptors(df_input_mordred, train_descriptor_names)
-
-        if df_input_mordred_aligned.empty and not df_input_mordred.empty:
-             st.warning("Input Mordred descriptors could not be aligned with training set columns (e.g. no common descriptors). PCA might not be meaningful.")
-        elif df_input_mordred_aligned.empty:
-             st.error("Aligned input Mordred descriptors are empty. Cannot generate PCA.")
-             return
-
-
-        # Generate and display PCA plot
-        st.subheader("Principal Component Analysis (PCA) Plot")
-        st.markdown("Comparing your input SMILES descriptors against the BACE dataset descriptors.")
-        with st.spinner("Generating PCA plot..."):
-            generate_pca_plot(df_train_descriptors, df_input_mordred_aligned)
-
+        # --- GNN pIC50 Prediction ---
+        st.markdown("---")
+        st.subheader("📈 GNN-based pIC50 Prediction")
+        if not st.session_state.pred_std_smiles_list:
+            st.warning("No standardized SMILES available for GNN prediction.")
+        else:
+            with st.spinner("Running GNN pIC50 prediction workflow..."):
+                # Import the GNN prediction workflow function
+                from utils.prediction_utils import run_gnn_prediction_workflow # Already imported at top
+                
+                df_gnn_predictions = run_gnn_prediction_workflow(st.session_state.pred_std_smiles_list)
+                
+                if not df_gnn_predictions.empty:
+                    st.markdown("#### GNN Predicted pIC50 Values:")
+                    # Ensure columns are named as expected by your predict_pic50_gnn or rename them here
+                    # Example: df_gnn_predictions = df_gnn_predictions.rename(columns={'actual_smiles': 'SMILES', 'predicted_pic50': 'Predicted pIC50'})
+                    st.dataframe(df_gnn_predictions)
+                else:
+                    st.info("GNN pIC50 prediction resulted in no data or an error occurred.")
 
 def display_about_page():
     st.header("About This Application")
