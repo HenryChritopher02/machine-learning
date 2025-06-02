@@ -180,36 +180,67 @@ def predict_gnn(model, data_loader, output_csv_path, device='cpu'):
     return results_df
 
 def predict_pic50_gnn(model, data_loader, device='cpu'):
+    """
+    Predicts pIC50 values for the given data using the GNN model.
+    Input data is assumed not to have target (y) values for prediction.
+
+    Args:
+        model: The trained GNN model.
+        data_loader: DataLoader containing the graph data for prediction.
+                     Each item in the batch should have a 'smiles' attribute.
+        device: The device (e.g., 'cpu', 'cuda') to run inference on.
+
+    Returns:
+        pandas.DataFrame: DataFrame with 'SMILES' and 'Predicted_pIC50' columns.
+    """
     model.to(device)
-    model.eval()
+    model.eval()  # Set the model to evaluation mode
     
-    # Lists to store information per sample
     all_smiles = []
-    all_predictions = []
-    all_targets = []
+    all_predicted_values = [] # Changed from all_predictions to store flat list of numbers
     
-    with torch.no_grad():
+    with torch.no_grad():  # Disable gradient calculations for inference
         for batch in data_loader:
-            batch.to(device)
-            # Forward pass: obtain predictions for this batch
-            predictions = model(batch.x.float(), batch.edge_index, batch.batch)
-            predictions_np = predictions.cpu().squeeze().numpy()
-            targets_np = batch.y.cpu().numpy()
+            batch = batch.to(device) # Move the whole batch to the device
             
-            # Append batch results: ensure the ordering matches that of predictions/targets
-            all_smiles.extend(batch.smiles)
-            all_predictions.append(predictions_np)
-            all_targets.append(targets_np)
+            if hasattr(batch, 'edge_attr') and batch.edge_attr is not None and batch.edge_attr.numel() > 0:
+                predictions_batch = model(batch.x.float(), batch.edge_index, batch.batch, batch.edge_attr.float())
+            else:
+                predictions_batch = model(batch.x.float(), batch.edge_index, batch.batch)
+
+            # Ensure predictions_batch is a 1D tensor of shape [batch_size]
+            # If your model outputs [batch_size, 1], squeeze it:
+            if predictions_batch.ndim > 1 and predictions_batch.shape[1] == 1:
+                predictions_batch = predictions_batch.squeeze(1)
+            
+            # Convert tensor of predictions for the batch to a Python list of numbers
+            # and extend the main list. .tolist() is robust for this.
+            all_predicted_values.extend(predictions_batch.cpu().tolist())
+            
+            # Append SMILES for each item in the batch
+            # Assumes 'batch.smiles' is a list of SMILES strings for the current batch
+            if hasattr(batch, 'smiles'):
+                all_smiles.extend(batch.smiles)
+            else:
+                # Fallback if smiles attribute is missing for some reason
+                # This might indicate an issue in data preparation
+                # Add None placeholders to maintain length consistency
+                all_smiles.extend([None] * predictions_batch.size(0)) # predictions_batch.size(0) is batch size
+
+    # Ensure the lengths match before creating DataFrame
+    if len(all_smiles) != len(all_predicted_values):
+        # This case should ideally not happen if data.smiles is correctly populated for every batch item
+        # And if every item in the batch gets a prediction
+        print(f"Warning: Mismatch in length of SMILES ({len(all_smiles)}) and predictions ({len(all_predicted_values)}). Results might be misaligned.")
+        # Truncate to the shorter length to prevent DataFrame creation error, or handle as appropriate
+        min_len = min(len(all_smiles), len(all_predicted_values))
+        all_smiles = all_smiles[:min_len]
+        all_predicted_values = all_predicted_values[:min_len]
     
-    # Flatten predictions and targets across batches
-    all_predictions = np.concatenate(all_predictions)
-    all_targets = np.concatenate(all_targets)
-    
-    # Create a DataFrame with one row per sample
-    df = pd.DataFrame({
-        'standardized_smiles': all_smiles,
-        'actual_pIC50': all_targets,
-        'predicted_pIC50': all_predictions
+    # Create a DataFrame with SMILES and their predicted pIC50 values
+    df_results = pd.DataFrame({
+        'SMILES': all_smiles, # Changed column name for consistency
+        'Predicted_pIC50': all_predicted_values # Changed column name
     })
     
-    return df
+    return df_results
