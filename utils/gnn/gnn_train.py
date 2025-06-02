@@ -203,10 +203,7 @@ def predict_pic50_gnn(model, data_loader, device='cpu'):
         for batch in data_loader:
             batch = batch.to(device) # Move the whole batch to the device
             
-            if hasattr(batch, 'edge_attr') and batch.edge_attr is not None and batch.edge_attr.numel() > 0:
-                predictions_batch = model(batch.x.float(), batch.edge_index, batch.batch, batch.edge_attr.float())
-            else:
-                predictions_batch = model(batch.x.float(), batch.edge_index, batch.batch)
+            predictions_batch = model(batch.x.float(), batch.edge_index, batch.batch)
 
             # Ensure predictions_batch is a 1D tensor of shape [batch_size]
             # If your model outputs [batch_size, 1], squeeze it:
