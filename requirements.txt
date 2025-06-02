@@ -12,4 +12,6 @@ requests
 molscrub
 matplotlib
 setuptools
-huggingface_hub
+torch
+torch-geometric
+scipy
