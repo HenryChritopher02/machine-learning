@@ -145,11 +145,6 @@ GNN_MODEL_DIR = WORKSPACE_PARENT_DIR / "gnn_models"
 GNN_MODEL_FILENAME = "gnn_bace_pic50_downloaded.pth"
 DEFAULT_NODE_FEATURE_SIZE = 30
 
-DEFAULT_GIN_PARAMS = {
-    'num_layers': 5,
-    'hidden_channels': 128,
-}
-
 def mol_to_graph_data_for_prediction(smiles_str, featurizer):
     mol = Chem.MolFromSmiles(smiles_str)
     if mol is None:
@@ -232,12 +227,17 @@ def run_gnn_prediction_workflow(standardized_smiles_list):
         return pd.DataFrame()
 
     try:
+        params = {'embedding_size': 64,
+         'dense_neuron': 1024,
+         'num_gin_layers': 2,
+         'num_mlp_layers': 2,
+         'dropout_value': 0.11225846425316804,
+         'dropout_mlp': 0.3937283675371147,
+         'learning_rate': 0.004222524354917754}
+
         model_architecture = GIN(
-            num_node_features=DEFAULT_NODE_FEATURE_SIZE,
-            num_classes=1, 
-            num_layers=DEFAULT_GIN_PARAMS['num_layers'],
-            hidden_channels=DEFAULT_GIN_PARAMS['hidden_channels']
-        ).to(device)
+            feature_size=DEFAULT_NODE_FEATURE_SIZE,
+            model_params = params).to(device)
         
         trained_gnn_model = load_model(model_architecture, str(model_local_path), device)
         if trained_gnn_model is None:
