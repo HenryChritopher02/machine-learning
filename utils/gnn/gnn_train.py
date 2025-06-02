@@ -132,7 +132,7 @@ def evaluate_model(model, data_loader, device='cpu'):
 
 def load_model(model, path='best_model.pth', device='cpu'):
     # Load the model state from the specified file
-    model.load_state_dict(torch.load(path, map_location=device)['model_state_dict'])
+    model.load_state_dict(torch.load(path, map_location=device, weights_only=False)['model_state_dict'])
     model.to(device)  # Move the model to the specified device
     return model
 
