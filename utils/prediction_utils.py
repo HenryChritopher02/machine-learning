@@ -105,23 +105,23 @@ def generate_pca_plot(df_train_desc, df_input_desc_aligned):
         st.warning("No data available for PCA plot.")
         return
 
-    imputer = SimpleImputer(strategy='mean')
-    train_desc_imputed = imputer.fit_transform(df_train_desc)
+    # imputer = SimpleImputer(strategy='mean')
+    # train_desc_imputed = imputer.fit_transform(df_train_desc)
     
-    scaler = StandardScaler()
-    train_desc_scaled = scaler.fit_transform(train_desc_imputed)
+    # scaler = StandardScaler()
+    # train_desc_scaled = scaler.fit_transform(train_desc_imputed)
     
     pca = PCA(n_components=2)
-    pca.fit(train_desc_scaled)
-    train_pca = pca.transform(train_desc_scaled)
+    pca.fit(df_train_desc)
+    train_pca = pca.transform(df_train_desc)
 
     fig, ax = plt.subplots(figsize=(10, 7))
     ax.scatter(train_pca[:, 0], train_pca[:, 1], label='Train Data (BACE)', alpha=0.5, c='blue', edgecolors='k', s=50)
 
     if not df_input_desc_aligned.empty:
-        input_desc_imputed = imputer.transform(df_input_desc_aligned)
-        input_desc_scaled = scaler.transform(input_desc_imputed)
-        input_pca = pca.transform(input_desc_scaled)
+        # input_desc_imputed = imputer.transform(df_input_desc_aligned)
+        # input_desc_scaled = scaler.transform(input_desc_imputed)
+        input_pca = pca.transform(df_input_desc_aligned)
         if input_pca.shape[0] > 0:
             ax.scatter(input_pca[:, 0], input_pca[:, 1], label='Input SMILES', alpha=0.8, c='red', marker='X', s=100, edgecolors='k')
     
