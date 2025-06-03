@@ -65,7 +65,7 @@ def load_and_prepare_train_data_desc(): # Removed hf_token parameter
         st.success("Successfully loaded PCA training data.")
         
         # Assuming descriptors start from the 7th column (index 6)
-        train_descriptors_df = df_train_raw.iloc[:, 6:].copy()
+        train_descriptors_df = df_train_raw.drop(['mol', 'CID', 'Class', 'Model', 'standardized_smiles', 'pIC50'], axis=1).copy()
         
         for col in train_descriptors_df.columns:
             if train_descriptors_df[col].dtype == 'object':
