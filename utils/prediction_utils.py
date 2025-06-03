@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from rdkit import Chem
 from rdkit.Chem import AllChem
-from mordred import Calculator, descriptors as mordred_descriptors_collection
+from mordred import Calculator, descriptors
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.decomposition import PCA
@@ -33,7 +33,7 @@ from .paths import (
 def calculate_mordred_descriptors(mols):
     if not mols:
         return pd.DataFrame()
-    calc = Calculator(mordred_descriptors_collection, ignore_3D=True)
+    calc = Calculator(descriptors, ignore_3D=True)
     df_mordred = calc.pandas(mols)
     for col in df_mordred.columns:
         if df_mordred[col].dtype == 'object':
