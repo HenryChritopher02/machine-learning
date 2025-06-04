@@ -19,8 +19,8 @@ from deepchem.feat import MolGraphConvFeaturizer
 
 from .gnn.gnn_architecture import GIN
 from .gnn.gnn_train import load_model, predict_pic50_gnn
-from .gnn.gnn_mlp_architecture import GIN_hybrid, MLP1, CombinedMLP
-from .gnn.gnn_mlp_train import predict_pic50_hybrid
+from .gnn_mlp.hybrid_architecture import GIN_hybrid, MLP1, CombinedMLP
+from .gnn_mlp.gnn_mlp_train import predict_pic50_hybrid
 
 from .paths import (
     BACE_TRAIN_DATA_URL,
