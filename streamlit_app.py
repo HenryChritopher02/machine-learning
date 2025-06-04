@@ -629,12 +629,14 @@ def display_prediction_model_procedure():
     st.markdown("---")
 
     # --- Model Selection ---
+    # THIS IS THE ADDED UI ELEMENT FOR MODEL SELECTION
     model_type = st.radio(
         "Select Prediction Model Type:",
         ("Original GNN Model", "Hybrid GNN Model (Requires 15 Docking Scores)"),
-        key="prediction_model_type_selector"
+        key="prediction_model_type_selector",
+        horizontal=True # Makes radio buttons appear next to each other
     )
-    st.markdown("---")
+    st.markdown("---") # Visual separator
 
     # --- Input SMILES ---
     st.subheader("🧬 Input SMILES for Prediction")
@@ -666,7 +668,7 @@ def display_prediction_model_procedure():
         st.session_state.pred_invalid_smiles = []
         with st.spinner("Standardizing SMILES..."):
             for smi in input_smiles_list_for_pred:
-                std_smi = standardize_smiles_rdkit(smi, st.session_state.pred_invalid_smiles)
+                std_smi = standardize_smiles_rdkit(smi, st.session_state.pred_invalid_smiles) # from app_utils
                 if std_smi: st.session_state.pred_std_smiles_list.append(std_smi)
         
         if st.session_state.pred_invalid_smiles:
@@ -676,7 +678,7 @@ def display_prediction_model_procedure():
             st.error("No valid SMILES available after standardization."); return
         st.success(f"Standardized {len(st.session_state.pred_std_smiles_list)} SMILES.")
         
-        # --- Descriptor Calculation & PCA (Optional based on UI or always run) ---
+        # --- Descriptor Calculation & PCA ---
         st.markdown("---"); st.subheader("🔬 Mordred Descriptors & PCA Analysis")
         mols_for_features = [Chem.MolFromSmiles(s) for s in st.session_state.pred_std_smiles_list]
         mols_for_features = [m for m in mols_for_features if m is not None]
@@ -684,34 +686,39 @@ def display_prediction_model_procedure():
         if not mols_for_features:
             st.warning("Could not generate RDKit molecules for descriptor calculation. Skipping Mordred/PCA.")
         else:
-            with st.spinner("Calculating Mordred descriptors & ECFP4..."):
-                df_input_mordred = calculate_mordred_descriptors(mols_for_features)
-                # df_input_ecfp4 = calculate_ecfp4_fingerprints(mols_for_features) # ECFP4 not used by PCA here
+            with st.spinner("Calculating Mordred descriptors..."): # Removed ECFP4 as it's not used directly in this flow
+                df_input_mordred = calculate_mordred_descriptors(mols_for_features) # from prediction_utils
             if df_input_mordred.empty:
                 st.warning("Mordred descriptors calculation failed. Skipping PCA.")
             else:
-                df_input_mordred.index = st.session_state.pred_std_smiles_list[:len(df_input_mordred)]
+                # Ensure index is set correctly if df_input_mordred has fewer rows due to errors
+                valid_smiles_for_mordred = st.session_state.pred_std_smiles_list[:len(df_input_mordred)]
+                df_input_mordred.index = valid_smiles_for_mordred
+                
                 with st.spinner("Loading reference data & generating PCA plot..."):
-                    df_train_descriptors, train_descriptor_names = load_and_prepare_train_data_desc()
+                    df_train_descriptors, train_descriptor_names = load_and_prepare_train_data_desc() # from prediction_utils
                 if df_train_descriptors is not None and train_descriptor_names:
-                    df_input_mordred_aligned = align_input_descriptors(df_input_mordred, train_descriptor_names)
-                    generate_pca_plot(df_train_descriptors, df_input_mordred_aligned)
+                    df_input_mordred_aligned = align_input_descriptors(df_input_mordred, train_descriptor_names) # from prediction_utils
+                    generate_pca_plot(df_train_descriptors, df_input_mordred_aligned) # from prediction_utils
                 else: st.error("Could not load PCA training data.")
         
-        # --- GNN Prediction based on selected model type ---
+        # --- GNN Prediction based on selected model_type (retrieved from st.radio) ---
         st.markdown("---")
-        if model_type == "Original GNN Model":
+        # Get the selected model type from the radio button
+        selected_model_for_prediction = st.session_state.get("prediction_model_type_selector", "Original GNN Model") # Default if key somehow not set
+
+        if selected_model_for_prediction == "Original GNN Model":
             st.subheader("📈 Original GNN-based pIC50 Prediction")
             if not st.session_state.pred_std_smiles_list:
                 st.warning("No standardized SMILES for Original GNN prediction.")
             else:
-                df_gnn_predictions = run_original_gnn_prediction(st.session_state.pred_std_smiles_list)
+                df_gnn_predictions = run_original_gnn_prediction(st.session_state.pred_std_smiles_list) # from prediction_utils
                 if not df_gnn_predictions.empty:
                     st.markdown("#### Original GNN Predicted pIC50 Values:")
                     st.dataframe(df_gnn_predictions)
                 else: st.info("Original GNN pIC50 prediction yielded no data or an error occurred.")
         
-        elif model_type == "Hybrid GNN Model (Requires 15 Docking Scores)":
+        elif selected_model_for_prediction == "Hybrid GNN Model (Requires 15 Docking Scores)":
             st.subheader("📈 Hybrid GNN-based pIC50 Prediction")
             if not st.session_state.pred_std_smiles_list:
                 st.warning("No standardized SMILES input for Hybrid GNN prediction.")
@@ -719,41 +726,44 @@ def display_prediction_model_procedure():
 
             docking_scores_data = st.session_state.get('docking_scores_for_hybrid')
             if docking_scores_data is None or docking_scores_data.empty:
-                st.error("Docking scores from 'Ensemble Docking' procedure are not available or empty. Cannot run Hybrid GNN. Please run Ensemble Docking first for the relevant SMILES and ensure 15 scores are generated.")
+                st.error("Docking scores from 'Ensemble Docking' procedure are not available or empty. Cannot run Hybrid GNN. "
+                         "Please run Ensemble Docking first for the relevant SMILES and ensure 15 numeric scores are generated and stored.")
                 return
 
-            # Align input SMILES with available docking scores
             input_smiles_df_for_merge = pd.DataFrame({'SMILES': st.session_state.pred_std_smiles_list})
-            
-            # Ensure SMILES column in docking_scores_data is named 'SMILES' for merging
-            # The storing logic already renames 'ligand_id' to 'SMILES'
             merged_data_for_hybrid = pd.merge(input_smiles_df_for_merge, docking_scores_data, on='SMILES', how='inner')
 
             if merged_data_for_hybrid.empty:
-                st.error("None of the current input SMILES have corresponding docking scores from the 'Ensemble Docking' results. Please ensure SMILES match and docking was run.")
+                st.error("None of the current input SMILES have corresponding docking scores from the 'Ensemble Docking' results. "
+                         "Please ensure SMILES match and docking was run for them, producing 15 scores.")
                 return
             
-            # Prepare inputs for the hybrid model
             aligned_smiles_for_gnn_part = merged_data_for_hybrid['SMILES'].tolist()
-            # Columns for docking scores are all columns except 'SMILES', 'Ligand Base Name' (if present)
             score_cols_for_hybrid_input = [col for col in merged_data_for_hybrid.columns if col.endswith("Score (kcal/mol)")]
 
-            if len(score_cols_for_hybrid_input) != 15: # NUM_DOCKING_FEATURES
-                st.error(f"Aligned data has {len(score_cols_for_hybrid_input)} docking score columns, but Hybrid GNN expects 15. Columns: {score_cols_for_hybrid_input}")
+            if len(score_cols_for_hybrid_input) != 15: # NUM_DOCKING_FEATURES (constant from prediction_utils)
+                st.error(f"Aligned data has {len(score_cols_for_hybrid_input)} docking score columns, but Hybrid GNN expects 15. Columns found: {score_cols_for_hybrid_input}")
                 return
             
             aligned_docking_scores_df_for_mlp = merged_data_for_hybrid[score_cols_for_hybrid_input]
             
-            st.info(f"Proceeding with Hybrid GNN for {len(aligned_smiles_for_gnn_part)} SMILES that have corresponding docking scores.")
+            # Ensure all score columns are numeric after merge
+            for col in score_cols_for_hybrid_input:
+                aligned_docking_scores_df_for_mlp[col] = pd.to_numeric(aligned_docking_scores_df_for_mlp[col], errors='coerce')
+            
+            # Check for NaNs again after attempting conversion, in case some "N/A" strings remained and became NaN
+            if aligned_docking_scores_df_for_mlp.isnull().any().any():
+                st.error("Some docking scores for the selected SMILES are still not valid numbers (NaN) after alignment. Hybrid GNN cannot proceed.")
+                st.dataframe(aligned_docking_scores_df_for_mlp[aligned_docking_scores_df_for_mlp.isnull().any(axis=1)])
+                return
 
-            df_hybrid_predictions = run_hybrid_gnn_prediction(aligned_smiles_for_gnn_part, aligned_docking_scores_df_for_mlp)
+            st.info(f"Proceeding with Hybrid GNN for {len(aligned_smiles_for_gnn_part)} SMILES that have corresponding numeric docking scores.")
+
+            df_hybrid_predictions = run_hybrid_gnn_prediction(aligned_smiles_for_gnn_part, aligned_docking_scores_df_for_mlp) # from prediction_utils
             if not df_hybrid_predictions.empty:
                 st.markdown("#### Hybrid GNN Predicted pIC50 Values:")
-                # Add original SMILES back to the hybrid predictions if predict_pic50_hybrid doesn't include them
-                # This assumes df_hybrid_predictions has predictions in the same order as aligned_smiles_for_gnn_part
                 if 'SMILES' not in df_hybrid_predictions.columns and len(df_hybrid_predictions) == len(aligned_smiles_for_gnn_part):
                     df_hybrid_predictions.insert(0, 'SMILES', aligned_smiles_for_gnn_part)
-
                 st.dataframe(df_hybrid_predictions)
             else: st.info("Hybrid GNN pIC50 prediction yielded no data or an error occurred.")
 
