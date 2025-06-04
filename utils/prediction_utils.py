@@ -212,7 +212,6 @@ def create_graph_data_list_from_smiles(standardized_smiles_list):
     return data_list
 
 @st.cache_resource
-import shutil
 def download_gnn_model_file(model_url, model_save_dir, model_filename):
     # ... (keep implementation from previous response) ...
     model_save_dir.mkdir(parents=True, exist_ok=True)
