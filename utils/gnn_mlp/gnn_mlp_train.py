@@ -259,7 +259,7 @@ def predict_pic50_hybrid(model, mlp1, combined_mlp_model, graph_data_loader, num
             batch = batch.to(device)
             num_features = num_features.to(device)
             labels = labels.to(device)
-            predictions_batch, _, _, _ = forward(model, mlp1, combined_mlp_model, graph_batch, num_features, device)
+            predictions_batch, _, _, _ = forward(model, mlp1, combined_mlp_model, batch, num_features, device)
             if predictions_batch.ndim > 1 and predictions_batch.shape[1] == 1:
                 predictions_batch = predictions_batch.squeeze(1)
             # Convert tensor of predictions for the batch to a Python list of numbers
