@@ -34,10 +34,14 @@ from utils.app_utils import (
     find_paired_config_for_protein, convert_df_to_csv, parse_score_from_pdbqt
 )
 
+# Import all necessary functions from prediction_utils
 from utils.prediction_utils import (
     calculate_mordred_descriptors, calculate_ecfp4_fingerprints,
-    load_and_prepare_train_data_desc, align_input_descriptors, generate_pca_plot
+    load_and_prepare_train_data_desc, align_input_descriptors, generate_pca_plot,
+    run_original_gnn_prediction, run_hybrid_gnn_prediction # New workflows
 )
+# Ensure Chem is imported if used directly
+from rdkit import Chem
 
 def display_ensemble_docking_procedure():
     st.header(f"Ensemble AutoDock Vina Docking (App v{APP_VERSION})")
@@ -561,34 +565,60 @@ def display_ensemble_docking_procedure():
                         if num_total_direct_jobs > 0: overall_docking_progress.progress(job_counter / num_total_direct_jobs)
                 else: 
                     st.info("No direct Vina jobs were planned.")
-
-            if st.session_state.docking_run_outputs: 
+                
+            # --- Modification: Store docking scores for Hybrid GNN ---
+            if 'docking_run_outputs' in st.session_state and st.session_state.docking_run_outputs:
                 st.markdown("---"); st.subheader("📊 Docking Results Summary")
                 try:
                     df_flat = pd.DataFrame(st.session_state.docking_run_outputs)
-                    if df_flat.empty: 
-                        st.info("No docking scores were recorded (DataFrame is empty).")
-                    else:
+                    if not df_flat.empty:
                         df_flat['score'] = pd.to_numeric(df_flat['score'], errors='coerce')
-                        if df_flat['score'].isnull().any():
-                            st.warning("Some scores could not be converted to numeric (NaN). These rows will show 'N/A'.")
                         df_flat['Protein-Config'] = df_flat['protein_stem'] + '_' + df_flat['config_stem']
                         df_pivot = df_flat.pivot_table(index=['ligand_id', 'ligand_base_name'], columns='Protein-Config', values='score', aggfunc='min')
                         df_summary = df_pivot.reset_index()
-                        new_column_names = {'ligand_id': 'Ligand ID / SMILES', 'ligand_base_name': 'Ligand Base Name'}
-                        for col in df_pivot.columns: new_column_names[col] = f"{col} Score (kcal/mol)"
+                        new_column_names = {'ligand_id': 'SMILES', 'ligand_base_name': 'Ligand Base Name'} # Changed to 'SMILES' for easier merging
+                        
+                        score_col_count = 0
+                        for col in df_pivot.columns: 
+                            new_column_names[col] = f"{col} Score (kcal/mol)"
+                            score_col_count +=1
                         df_summary = df_summary.rename(columns=new_column_names)
+                        
                         for col_name in df_summary.columns:
                             if col_name.endswith("Score (kcal/mol)"):
                                 df_summary[col_name] = df_summary[col_name].apply(lambda x: f"{x:.3f}" if pd.notnull(x) else "N/A")
-                        st.dataframe(df_summary)
+                        
+                        st.dataframe(df_summary) # Display summary
                         csv_summary = convert_df_to_csv(df_summary)
                         st.download_button("Download Summary (CSV)", csv_summary, "docking_summary_per_ligand.csv", "text/csv", key="dl_summary_per_ligand_csv")
+        
+                        # Store relevant scores for Hybrid GNN
+                        score_columns = [col for col in df_summary.columns if col.endswith("Score (kcal/mol)")]
+                        
+                        # Convert score columns to numeric, coercing errors for "N/A"
+                        scores_for_hybrid = df_summary[['SMILES'] + score_columns].copy()
+                        for col in score_columns:
+                            scores_for_hybrid[col] = pd.to_numeric(scores_for_hybrid[col], errors='coerce')
+                        
+                        # Drop rows with any NaN in score columns for hybrid model input
+                        scores_for_hybrid_cleaned = scores_for_hybrid.dropna(subset=score_columns)
+        
+                        num_score_cols_found = len(score_columns)
+        
+                        if num_score_cols_found == 15: # NUM_DOCKING_FEATURES
+                            st.session_state.docking_scores_for_hybrid = scores_for_hybrid_cleaned
+                            st.success(f"15 docking scores per ligand (for {len(scores_for_hybrid_cleaned)} ligands with complete scores) saved for Hybrid GNN prediction.")
+                        elif num_score_cols_found > 0:
+                            st.warning(f"Found {num_score_cols_found} docking score columns, but Hybrid GNN model expects 15. Please check docking results if you intend to use Hybrid GNN.")
+                            if 'docking_scores_for_hybrid' in st.session_state:
+                                del st.session_state.docking_scores_for_hybrid
+                        else: # Should not happen if df_summary has scores
+                            st.warning("No docking score columns found. Hybrid GNN input from docking will not be available.")
+                            if 'docking_scores_for_hybrid' in st.session_state:
+                                del st.session_state.docking_scores_for_hybrid
+                    # ... (rest of your docking results display) ...
                 except Exception as e_df:
-                    st.error(f"Error generating results summary table: {e_df}")
-                    st.caption("Raw results data (first 5 if available):"); st.json(st.session_state.docking_run_outputs[:5])
-            else: 
-                st.info("No docking outputs were recorded to summarize.") 
+                    st.error(f"Error processing docking results for Hybrid GNN storage: {e_df}")
             st.balloons()
             st.header("🏁 Docking Run Finished 🏁")
             st.caption(f"Docked PDBQTs (direct Vina) in `{DOCKING_OUTPUT_DIR_LOCAL.name}/`. Perl script outputs in `{WORKSPACE_PARENT_DIR.name}/<protein_base_name>/`.")
@@ -597,126 +627,141 @@ def display_ensemble_docking_procedure():
 def display_prediction_model_procedure():
     st.header(f"🧪 Prediction Model Insights (App v{APP_VERSION})")
     st.markdown("---")
-    st.subheader("🧬 Input SMILES for Feature Calculation")
 
-    if 'pred_invalid_smiles' not in st.session_state:
-        st.session_state.pred_invalid_smiles = []
-    if 'pred_std_smiles_list' not in st.session_state:
-        st.session_state.pred_std_smiles_list = []
+    # --- Model Selection ---
+    model_type = st.radio(
+        "Select Prediction Model Type:",
+        ("Original GNN Model", "Hybrid GNN Model (Requires 15 Docking Scores)"),
+        key="prediction_model_type_selector"
+    )
+    st.markdown("---")
+
+    # --- Input SMILES ---
+    st.subheader("🧬 Input SMILES for Prediction")
+    if 'pred_invalid_smiles' not in st.session_state: st.session_state.pred_invalid_smiles = []
+    if 'pred_std_smiles_list' not in st.session_state: st.session_state.pred_std_smiles_list = []
     
     input_smiles_list_for_pred = []
-
     smiles_input_method_pred = st.radio(
-        "Choose SMILES input method for prediction:",
-        ("SMILES String", "SMILES File (.txt)"),
+        "Choose SMILES input method:", ("SMILES String", "SMILES File (.txt)"),
         key="smiles_input_method_pred", horizontal=True
     )
-
     if smiles_input_method_pred == "SMILES String":
-        smiles_string_pred = st.text_input("Enter SMILES string:", key="smiles_string_pred_input")
+        smiles_string_pred = st.text_input("Enter SMILES string(s) (comma-separated for multiple):", key="smiles_string_pred_input")
         if smiles_string_pred.strip():
-            input_smiles_list_for_pred.append(smiles_string_pred.strip())
-    
+            input_smiles_list_for_pred.extend([s.strip() for s in smiles_string_pred.split(',') if s.strip()])
     elif smiles_input_method_pred == "SMILES File (.txt)":
-        uploaded_smiles_file_pred = st.file_uploader(
-            "Upload SMILES file (.txt, one SMILES per line):",
-            type="txt", key="smiles_file_pred_uploader"
-        )
+        uploaded_smiles_file_pred = st.file_uploader("Upload SMILES file (.txt, one SMILES per line):", type="txt", key="smiles_file_pred_uploader")
         if uploaded_smiles_file_pred:
             try:
                 smiles_from_file = uploaded_smiles_file_pred.getvalue().decode("utf-8").splitlines()
                 input_smiles_list_for_pred.extend([s.strip() for s in smiles_from_file if s.strip()])
-            except Exception as e:
-                st.error(f"Error reading SMILES file: {e}")
+            except Exception as e: st.error(f"Error reading SMILES file: {e}")
 
-    # Combined button for all predictions based on input SMILES
     if st.button("Process SMILES & Generate Predictions", key="process_all_predictions_btn"):
         if not input_smiles_list_for_pred:
-            st.warning("Please provide SMILES input.")
-            return
+            st.warning("Please provide SMILES input."); return
 
         st.session_state.pred_std_smiles_list = []
         st.session_state.pred_invalid_smiles = []
-        
         with st.spinner("Standardizing SMILES..."):
             for smi in input_smiles_list_for_pred:
-                # Ensure standardize_smiles_rdkit is imported from app_utils
                 std_smi = standardize_smiles_rdkit(smi, st.session_state.pred_invalid_smiles)
-                if std_smi:
-                    st.session_state.pred_std_smiles_list.append(std_smi)
+                if std_smi: st.session_state.pred_std_smiles_list.append(std_smi)
         
         if st.session_state.pred_invalid_smiles:
             with st.expander(f"{len(st.session_state.pred_invalid_smiles)} SMILES failed standardization", expanded=True):
-                for failed_smi in st.session_state.pred_invalid_smiles:
-                    st.caption(f"- {failed_smi}")
-        
+                for failed_smi in st.session_state.pred_invalid_smiles: st.caption(f"- {failed_smi}")
         if not st.session_state.pred_std_smiles_list:
-            st.error("No valid SMILES available after standardization to proceed.")
-            return
-
-        st.success(f"Successfully standardized {len(st.session_state.pred_std_smiles_list)} SMILES.")
+            st.error("No valid SMILES available after standardization."); return
+        st.success(f"Standardized {len(st.session_state.pred_std_smiles_list)} SMILES.")
         
+        # --- Descriptor Calculation & PCA (Optional based on UI or always run) ---
+        st.markdown("---"); st.subheader("🔬 Mordred Descriptors & PCA Analysis")
         mols_for_features = [Chem.MolFromSmiles(s) for s in st.session_state.pred_std_smiles_list]
         mols_for_features = [m for m in mols_for_features if m is not None]
 
         if not mols_for_features:
-            st.error("Could not generate RDKit molecules from standardized SMILES for descriptor calculation.")
-            # Continue to GNN if st.session_state.pred_std_smiles_list is not empty
+            st.warning("Could not generate RDKit molecules for descriptor calculation. Skipping Mordred/PCA.")
         else:
-            # --- Mordred Descriptors and PCA Plot ---
-            st.markdown("---")
-            st.subheader("🔬 Mordred Descriptors & PCA Analysis")
-            with st.spinner("Calculating Mordred descriptors & ECFP4 fingerprints..."):
-                df_input_mordred = calculate_mordred_descriptors(mols_for_features) # from prediction_utils
-                df_input_ecfp4 = calculate_ecfp4_fingerprints(mols_for_features)   # from prediction_utils
-
-                if df_input_mordred.empty:
-                    st.warning("Failed to calculate Mordred descriptors. PCA plot may not be generated.")
-                else:
-                    df_input_mordred.index = st.session_state.pred_std_smiles_list[:len(df_input_mordred)]
-                    # Optionally display Mordred/ECFP4 info
-                    # st.write("First 5 Mordred descriptors (sample):", df_input_mordred.head())
-                    # st.write("First 5 ECFP4 fingerprints (sample):", df_input_ecfp4.head())
-
-
-            with st.spinner("Loading reference data and generating PCA plot..."):
-                df_train_descriptors, train_descriptor_names = load_and_prepare_train_data_desc() # from prediction_utils
-            
-            if df_train_descriptors is not None and train_descriptor_names:
-                if not df_input_mordred.empty:
-                    df_input_mordred_aligned = align_input_descriptors(df_input_mordred, train_descriptor_names) # from prediction_utils
-                    generate_pca_plot(df_train_descriptors, df_input_mordred_aligned) # from prediction_utils
-                else:
-                    st.warning("Skipping PCA plot as input Mordred descriptors could not be calculated.")
-                    generate_pca_plot(df_train_descriptors, pd.DataFrame()) # Show only train data if input failed
+            with st.spinner("Calculating Mordred descriptors & ECFP4..."):
+                df_input_mordred = calculate_mordred_descriptors(mols_for_features)
+                # df_input_ecfp4 = calculate_ecfp4_fingerprints(mols_for_features) # ECFP4 not used by PCA here
+            if df_input_mordred.empty:
+                st.warning("Mordred descriptors calculation failed. Skipping PCA.")
             else:
-                st.error("Could not load training data for PCA plot.")
-
-        # --- GNN pIC50 Prediction ---
+                df_input_mordred.index = st.session_state.pred_std_smiles_list[:len(df_input_mordred)]
+                with st.spinner("Loading reference data & generating PCA plot..."):
+                    df_train_descriptors, train_descriptor_names = load_and_prepare_train_data_desc()
+                if df_train_descriptors is not None and train_descriptor_names:
+                    df_input_mordred_aligned = align_input_descriptors(df_input_mordred, train_descriptor_names)
+                    generate_pca_plot(df_train_descriptors, df_input_mordred_aligned)
+                else: st.error("Could not load PCA training data.")
+        
+        # --- GNN Prediction based on selected model type ---
         st.markdown("---")
-        st.subheader("📈 GNN-based pIC50 Prediction")
-        if not st.session_state.pred_std_smiles_list:
-            st.warning("No standardized SMILES available for GNN prediction.")
-        else:
-            with st.spinner("Running GNN pIC50 prediction workflow..."):
-                # Import the GNN prediction workflow function
-                from utils.prediction_utils import run_gnn_prediction_workflow # Already imported at top
-                
-                df_gnn_predictions = run_gnn_prediction_workflow(st.session_state.pred_std_smiles_list)
-                
+        if model_type == "Original GNN Model":
+            st.subheader("📈 Original GNN-based pIC50 Prediction")
+            if not st.session_state.pred_std_smiles_list:
+                st.warning("No standardized SMILES for Original GNN prediction.")
+            else:
+                df_gnn_predictions = run_original_gnn_prediction(st.session_state.pred_std_smiles_list)
                 if not df_gnn_predictions.empty:
-                    st.markdown("#### GNN Predicted pIC50 Values:")
-                    # Ensure columns are named as expected by your predict_pic50_gnn or rename them here
-                    # Example: df_gnn_predictions = df_gnn_predictions.rename(columns={'actual_smiles': 'SMILES', 'predicted_pic50': 'Predicted pIC50'})
+                    st.markdown("#### Original GNN Predicted pIC50 Values:")
                     st.dataframe(df_gnn_predictions)
-                else:
-                    st.info("GNN pIC50 prediction resulted in no data or an error occurred.")
+                else: st.info("Original GNN pIC50 prediction yielded no data or an error occurred.")
+        
+        elif model_type == "Hybrid GNN Model (Requires 15 Docking Scores)":
+            st.subheader("📈 Hybrid GNN-based pIC50 Prediction")
+            if not st.session_state.pred_std_smiles_list:
+                st.warning("No standardized SMILES input for Hybrid GNN prediction.")
+                return
+
+            docking_scores_data = st.session_state.get('docking_scores_for_hybrid')
+            if docking_scores_data is None or docking_scores_data.empty:
+                st.error("Docking scores from 'Ensemble Docking' procedure are not available or empty. Cannot run Hybrid GNN. Please run Ensemble Docking first for the relevant SMILES and ensure 15 scores are generated.")
+                return
+
+            # Align input SMILES with available docking scores
+            input_smiles_df_for_merge = pd.DataFrame({'SMILES': st.session_state.pred_std_smiles_list})
+            
+            # Ensure SMILES column in docking_scores_data is named 'SMILES' for merging
+            # The storing logic already renames 'ligand_id' to 'SMILES'
+            merged_data_for_hybrid = pd.merge(input_smiles_df_for_merge, docking_scores_data, on='SMILES', how='inner')
+
+            if merged_data_for_hybrid.empty:
+                st.error("None of the current input SMILES have corresponding docking scores from the 'Ensemble Docking' results. Please ensure SMILES match and docking was run.")
+                return
+            
+            # Prepare inputs for the hybrid model
+            aligned_smiles_for_gnn_part = merged_data_for_hybrid['SMILES'].tolist()
+            # Columns for docking scores are all columns except 'SMILES', 'Ligand Base Name' (if present)
+            score_cols_for_hybrid_input = [col for col in merged_data_for_hybrid.columns if col.endswith("Score (kcal/mol)")]
+
+            if len(score_cols_for_hybrid_input) != 15: # NUM_DOCKING_FEATURES
+                st.error(f"Aligned data has {len(score_cols_for_hybrid_input)} docking score columns, but Hybrid GNN expects 15. Columns: {score_cols_for_hybrid_input}")
+                return
+            
+            aligned_docking_scores_df_for_mlp = merged_data_for_hybrid[score_cols_for_hybrid_input]
+            
+            st.info(f"Proceeding with Hybrid GNN for {len(aligned_smiles_for_gnn_part)} SMILES that have corresponding docking scores.")
+
+            df_hybrid_predictions = run_hybrid_gnn_prediction(aligned_smiles_for_gnn_part, aligned_docking_scores_df_for_mlp)
+            if not df_hybrid_predictions.empty:
+                st.markdown("#### Hybrid GNN Predicted pIC50 Values:")
+                # Add original SMILES back to the hybrid predictions if predict_pic50_hybrid doesn't include them
+                # This assumes df_hybrid_predictions has predictions in the same order as aligned_smiles_for_gnn_part
+                if 'SMILES' not in df_hybrid_predictions.columns and len(df_hybrid_predictions) == len(aligned_smiles_for_gnn_part):
+                    df_hybrid_predictions.insert(0, 'SMILES', aligned_smiles_for_gnn_part)
+
+                st.dataframe(df_hybrid_predictions)
+            else: st.info("Hybrid GNN pIC50 prediction yielded no data or an error occurred.")
 
 def display_about_page():
     st.header("About This Application")
     st.markdown(f"**Ensemble AutoDock Vina App - v{APP_VERSION}**")
     st.markdown("""
-    This application facilitates molecular docking simulations using AutoDock Vina and provides tools for chemical feature analysis.
+    This application facilitates molecular docking simulations using AutoDock Vina and provides tools for chemical feature analysis and pIC50 prediction.
     
     **Features:**
     - **Ensemble Docking:**
@@ -724,27 +769,35 @@ def display_about_page():
         - Docking against one or multiple receptor structures.
         - Utilization of specific or multiple Vina configuration files.
         - Options for using a Perl-based screening script or direct Vina calls.
-        - Summarization of best docking scores per ligand.
+        - Summarization of best docking scores per ligand. These scores can be used by the Hybrid GNN model.
     - **Prediction Model Insights:**
+        - Choice of prediction model: Original GNN or Hybrid GNN.
         - Standardization of input SMILES.
         - Calculation of 2D Mordred descriptors and ECFP4 fingerprints.
         - PCA visualization of input SMILES' Mordred descriptors against a reference BACE dataset.
+        - pIC50 prediction using selected GNN model. The Hybrid GNN model utilizes graph features from SMILES and 15 pre-calculated docking scores.
 
     **File Structure Expectation (Example):**
     - `your_project_root/`
         - `streamlit_app.py` (this file)
-        - `paths.py` (stores path constants)
-        - `app_utils.py` (utility functions for docking)
-        - `prediction_utils.py` (utility functions for prediction/feature analysis)
+        - `utils/`
+            - `__init__.py`
+            - `paths.py` (stores path constants)
+            - `app_utils.py` (utility functions for docking)
+            - `prediction_utils.py` (utility functions for prediction/feature analysis)
+            - `gnn/`
+                - `__init__.py`
+                - `gnn_architecture.py` (GIN, GIN_hybrid, MLP1, CombinedMLP classes)
+                - `gnn_train.py` (load_model, predict_pic50_gnn, predict_pic50_hybrid functions)
         - `ensemble_docking/`
             - `ligand_preprocessing/scrub.py`
             - `ligand_preprocessing/mk_prepare_ligand.py`
             - `Vina_screening.pl`
         - `vina/vina_1.2.5_linux_x86_64` (Vina executable, `chmod +x`)
-        - `autodock_workspace/` (created for temporary files, fetched assets)
+        - `autodock_workspace/` (created for temporary files, fetched assets, downloaded models)
         - `autodock_outputs/` (created for PDBQT outputs from direct Vina calls)
-        - `requirements.txt` (e.g., `streamlit`, `pandas`, `rdkit-pypi`, `mordred`, `scikit-learn`, `matplotlib`, `requests`)
-        - `packages.txt` (for Streamlit Cloud, e.g., `perl` if using the Perl script)
+        - `requirements.txt` 
+        - `packages.txt` (for Streamlit Cloud system dependencies)
     """)
     st.markdown(f"**Key Local Paths Used (resolved from `APP_ROOT` = `{APP_ROOT.resolve()}`):**\n"
                 f"- Workspace Parent: `{WORKSPACE_PARENT_DIR.resolve()}`\n"
@@ -752,15 +805,14 @@ def display_about_page():
                 f"- Direct Vina Output PDBQTs: `{DOCKING_OUTPUT_DIR_LOCAL.resolve()}`")
 
 def main():
-    st.set_page_config(layout="wide", page_title=f"Ensemble Vina Docking v{APP_VERSION}")
+    st.set_page_config(layout="wide", page_title=f"Molecular Modeling Suite v{APP_VERSION}")
     
-    # Initialize directories once at the start
     initialize_directories()
 
-    st.sidebar.image("https://raw.githubusercontent.com/HenryChritopher02/bace1/main/logo.png", width=300) # Ensure this link is valid
+    st.sidebar.image("https://raw.githubusercontent.com/HenryChritopher02/bace1/main/logo.png", width=300)
     st.sidebar.title("Categories")
 
-    app_mode_options = ("Ensemble Docking", "Prediction Model", "About") # Added "Prediction Model"
+    app_mode_options = ("Ensemble Docking", "Prediction Model", "About")
     app_mode_default = app_mode_options[0] 
     app_mode = st.sidebar.radio(
         "Select Procedure:", app_mode_options,
