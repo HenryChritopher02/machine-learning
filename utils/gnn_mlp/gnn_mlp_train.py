@@ -251,35 +251,48 @@ def predict_pic50_hybrid(model, mlp1, combined_mlp_model, graph_data_loader, num
     all_targets = []
 
     with torch.no_grad():
-        for (graph_batch, numerical_batch) in zip(graph_data_loader, numerical_data_loader):
+        for (batch, numerical_batch) in zip(graph_data_loader, numerical_data_loader):
             # Extract numerical features and labels from numerical_batch
             num_features, labels = numerical_batch
             
             # Move tensors to the device
-            graph_batch = graph_batch.to(device)
+            batch = batch.to(device)
             num_features = num_features.to(device)
             labels = labels.to(device)
-            predictions, _, _, _ = forward(model, mlp1, combined_mlp_model, graph_batch, num_features, device)
-            predictions_np = predictions.cpu().squeeze().numpy()
-            targets_np = graph_batch.y.cpu().numpy()
+            predictions_batch, _, _, _ = forward(model, mlp1, combined_mlp_model, graph_batch, num_features, device)
+            if predictions_batch.ndim > 1 and predictions_batch.shape[1] == 1:
+                predictions_batch = predictions_batch.squeeze(1)
+            # Convert tensor of predictions for the batch to a Python list of numbers
+            # and extend the main list. .tolist() is robust for this.
+            all_predicted_values.extend(predictions_batch.cpu().tolist())
             
-            # Append batch results: ensure the ordering matches that of predictions/targets
-            all_smiles.extend(graph_batch.smiles)
-            all_predictions.append(predictions_np)
-            all_targets.append(targets_np)
+            # Append SMILES for each item in the batch
+            # Assumes 'batch.smiles' is a list of SMILES strings for the current batch
+            if hasattr(batch, 'smiles'):
+                all_smiles.extend(batch.smiles)
+            else:
+                # Fallback if smiles attribute is missing for some reason
+                # This might indicate an issue in data preparation
+                # Add None placeholders to maintain length consistency
+                all_smiles.extend([None] * predictions_batch.size(0)) # predictions_batch.size(0) is batch size
 
-    # Flatten predictions and targets across batches
-    all_predictions = np.concatenate(all_predictions)
-    all_targets = np.concatenate(all_targets)
+    # Ensure the lengths match before creating DataFrame
+    if len(all_smiles) != len(all_predicted_values):
+        # This case should ideally not happen if data.smiles is correctly populated for every batch item
+        # And if every item in the batch gets a prediction
+        print(f"Warning: Mismatch in length of SMILES ({len(all_smiles)}) and predictions ({len(all_predicted_values)}). Results might be misaligned.")
+        # Truncate to the shorter length to prevent DataFrame creation error, or handle as appropriate
+        min_len = min(len(all_smiles), len(all_predicted_values))
+        all_smiles = all_smiles[:min_len]
+        all_predicted_values = all_predicted_values[:min_len]
     
-    # Create a DataFrame with one row per sample
-    df = pd.DataFrame({
-        'standardized_smiles': all_smiles,
-        'actual_pIC50': all_targets,
-        'predicted_pIC50': all_predictions
+    # Create a DataFrame with SMILES and their predicted pIC50 values
+    df_results = pd.DataFrame({
+        'SMILES': all_smiles, # Changed column name for consistency
+        'Predicted_pIC50': all_predicted_values # Changed column name
     })
     
-    return df
+    return df_results
 
 # def get_representations(model: torch.nn.Module,
 #                         mlp1: torch.nn.Module,
