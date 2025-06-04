@@ -247,8 +247,7 @@ def predict_pic50_hybrid(model, mlp1, combined_mlp_model, graph_data_loader, num
 
     # Lists to store information per sample
     all_smiles = []
-    all_predictions = []
-    all_targets = []
+    all_predicted_values = [] # Changed from all_predictions to store flat list of numbers
 
     with torch.no_grad():
         for (batch, numerical_batch) in zip(graph_data_loader, numerical_data_loader):
