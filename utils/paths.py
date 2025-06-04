@@ -32,3 +32,5 @@ DOCKING_OUTPUT_DIR_LOCAL = APP_ROOT / "autodock_outputs"
 
 # Prediction Model Related URL
 BACE_TRAIN_DATA_URL = "https://raw.githubusercontent.com/HenryChritopher02/machine-learning/refs/heads/master/train_data/bace_train_lipinski_mordred.csv"
+# New for Hybrid Model (Alternatively, define in prediction_utils.py)
+HYBRID_MODEL_BASE_URL = "https://raw.githubusercontent.com/HenryChritopher02/machine-learning/master/model/gnn/regression/vina125_15/"
