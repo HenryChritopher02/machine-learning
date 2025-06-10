@@ -44,7 +44,7 @@ from utils.prediction_utils import (
 from rdkit import Chem
 
 def display_ensemble_docking_procedure():
-    st.header(f"Ensemble AutoDock Vina Docking (App v{APP_VERSION})")
+    st.header(f"Ensemble Docking AutoDock Vina 1.2.5 (v{APP_VERSION})")
     st.markdown("---")
     # initialize_directories is called at the start of main for all modes now.
 
@@ -89,7 +89,7 @@ def display_ensemble_docking_procedure():
             receptor_names_input = st.text_area("Receptor Filenames (one per line):", key="receptor_filenames_manual_dockpage", height=100, help=f"From .../{receptor_dir_in_repo}/")
             if st.button("Fetch Specified Receptors", key="fetch_specified_receptors_dockpage"):
                 if receptor_names_input.strip():
-                    names = [n.strip() for n in receptor_names_input.splitlines() if n.strip()]
+                    names = [n.strip() + ".pdbqt" for n in receptor_names_input.splitlines() if n.strip()]
                     st.session_state.fetched_receptor_paths = []; temp_paths = []
                     with st.spinner(f"Downloading {len(names)} receptor(s)..."):
                         for r_name in names:
@@ -123,7 +123,7 @@ def display_ensemble_docking_procedure():
             config_names_input = st.text_area("Config Filenames (one per line):", key="config_filenames_manual_dockpage", height=100, help=f"From .../{config_dir_in_repo}/")
             if st.button("Fetch Specified Configs", key="fetch_specified_configs_dockpage"):
                 if config_names_input.strip():
-                    names = [n.strip() for n in config_names_input.splitlines() if n.strip()]
+                    names = [n.strip() + ".txt" for n in config_names_input.splitlines() if n.strip()]
                     st.session_state.fetched_config_paths = []; temp_paths = []
                     with st.spinner(f"Downloading {len(names)} config(s)..."):
                         for c_name in names:
