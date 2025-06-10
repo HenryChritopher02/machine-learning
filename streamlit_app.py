@@ -62,29 +62,27 @@ def display_ensemble_docking_procedure():
         st.markdown("---")
 
         st.subheader("Receptor(s) and Config(s)")
-        st.caption("Config files (.txt) with the same name as receptors will be fetched automatically.")
         
+        # --- MODIFIED: Added "Upload from Computer" option ---
         receptor_fetch_method = st.radio(
-            "Fetch Receptors:",
-            ("All from GitHub", "Specify from GitHub"),
+            "Receptor/Config Source:",
+            ("All from GitHub", "Specify from GitHub", "Upload from Computer"),
             key="receptor_fetch_method_dockpage",
             horizontal=True,
             label_visibility="collapsed"
         )
-        receptor_dir_in_repo = f"{GH_ENSEMBLE_DOCKING_ROOT_PATH}/{RECEPTOR_SUBDIR_GH.strip('/')}"
         
         if receptor_fetch_method == "All from GitHub":
+            st.caption("Config files (.txt) with the same name as receptors will be fetched automatically.")
+            receptor_dir_in_repo = f"{GH_ENSEMBLE_DOCKING_ROOT_PATH}/{RECEPTOR_SUBDIR_GH.strip('/')}"
             if st.button("Fetch All Receptors & Configs", key="fetch_all_receptors_auto_dockpage", help=f"Fetches all .pdbqt from .../{receptor_dir_in_repo} and their corresponding .txt configs."):
                 st.session_state.fetched_receptor_paths = []
                 st.session_state.fetched_config_paths = []
-                
                 with st.spinner(f"Listing .pdbqt files..."):
                     receptor_filenames = list_files_from_github_repo_dir(GH_OWNER, GH_REPO, receptor_dir_in_repo, GH_BRANCH, GH_API_BASE_URL, ".pdbqt")
-                
                 if receptor_filenames:
                     st.success(f"Found {len(receptor_filenames)} receptors. Downloading...")
-                    temp_receptor_paths = []
-                    temp_config_paths = []
+                    temp_receptor_paths, temp_config_paths = [], []
                     with st.spinner(f"Downloading all receptors and matching configs..."):
                         for r_name in receptor_filenames:
                             r_path = download_file_from_github(BASE_GITHUB_URL_FOR_DATA, f"{RECEPTOR_SUBDIR_GH.strip('/')}/{r_name}", r_name, RECEPTOR_DIR_LOCAL)
@@ -94,13 +92,15 @@ def display_ensemble_docking_procedure():
                                 c_path = download_file_from_github(BASE_GITHUB_URL_FOR_DATA, f"{CONFIG_SUBDIR_GH.strip('/')}/{c_name}", c_name, CONFIG_DIR_LOCAL)
                                 if c_path:
                                     temp_config_paths.append(c_path)
-                    
                     st.session_state.fetched_receptor_paths = temp_receptor_paths
                     st.session_state.fetched_config_paths = temp_config_paths
                     st.success(f"✅ Fetched {len(st.session_state.fetched_receptor_paths)} receptors and {len(st.session_state.fetched_config_paths)} configs.")
                 else:
                     st.warning(f"No .pdbqt files found in GitHub directory.")
-        else:
+        
+        elif receptor_fetch_method == "Specify from GitHub":
+            st.caption("Config files (.txt) with the same name as receptors will be fetched automatically.")
+            receptor_dir_in_repo = f"{GH_ENSEMBLE_DOCKING_ROOT_PATH}/{RECEPTOR_SUBDIR_GH.strip('/')}"
             receptor_names_input = st.text_area(
                 "Receptor Filenames (one per line, without extension):",
                 key="receptor_filenames_manual_dockpage",
@@ -110,12 +110,8 @@ def display_ensemble_docking_procedure():
             if st.button("Fetch Specified Receptors & Configs", key="fetch_specified_receptors_dockpage"):
                 if receptor_names_input.strip():
                     receptor_base_names = [n.strip() for n in receptor_names_input.splitlines() if n.strip()]
-                    
-                    st.session_state.fetched_receptor_paths = []
-                    st.session_state.fetched_config_paths = []
-                    temp_receptor_paths = []
-                    temp_config_paths = []
-
+                    st.session_state.fetched_receptor_paths, st.session_state.fetched_config_paths = [], []
+                    temp_receptor_paths, temp_config_paths = [], []
                     with st.spinner(f"Downloading {len(receptor_base_names)} specified receptor(s) and config(s)..."):
                         for base_name in receptor_base_names:
                             r_name = base_name + ".pdbqt"
@@ -126,7 +122,6 @@ def display_ensemble_docking_procedure():
                                 c_path = download_file_from_github(BASE_GITHUB_URL_FOR_DATA, f"{CONFIG_SUBDIR_GH.strip('/')}/{c_name}", c_name, CONFIG_DIR_LOCAL)
                                 if c_path:
                                     temp_config_paths.append(c_path)
-                    
                     if temp_receptor_paths:
                         st.session_state.fetched_receptor_paths = temp_receptor_paths
                         st.session_state.fetched_config_paths = temp_config_paths
@@ -136,6 +131,54 @@ def display_ensemble_docking_procedure():
                 else:
                     st.warning("Enter receptor filenames.")
         
+        # --- NEW: UI and logic for local file uploads ---
+        elif receptor_fetch_method == "Upload from Computer":
+            st.caption("Upload receptor (.pdbqt) and config (.txt) files. Only paired files will be processed.")
+            uploaded_receptors = st.file_uploader("Upload Receptor(s) (.pdbqt)", type="pdbqt", accept_multiple_files=True, key="receptor_uploader_local")
+            uploaded_configs = st.file_uploader("Upload Config(s) (.txt)", type="txt", accept_multiple_files=True, key="config_uploader_local")
+
+            if st.button("Process Uploaded Files", key="process_local_files_btn"):
+                if not uploaded_receptors or not uploaded_configs:
+                    st.warning("Please upload both receptor and config files.")
+                else:
+                    receptor_map = {Path(f.name).stem: f for f in uploaded_receptors}
+                    config_map = {Path(f.name).stem: f for f in uploaded_configs}
+
+                    temp_receptor_paths, temp_config_paths, unpaired_receptors = [], [], []
+
+                    with st.spinner("Processing and pairing uploaded files..."):
+                        for base_name, receptor_file in receptor_map.items():
+                            if base_name in config_map:
+                                config_file = config_map[base_name]
+                                
+                                # Save receptor file
+                                r_dest_path = RECEPTOR_DIR_LOCAL / receptor_file.name
+                                with open(r_dest_path, "wb") as f:
+                                    f.write(receptor_file.getbuffer())
+                                temp_receptor_paths.append(str(r_dest_path))
+                                
+                                # Save config file
+                                c_dest_path = CONFIG_DIR_LOCAL / config_file.name
+                                with open(c_dest_path, "wb") as f:
+                                    f.write(config_file.getbuffer())
+                                temp_config_paths.append(str(c_dest_path))
+                            else:
+                                unpaired_receptors.append(receptor_file.name)
+
+                    st.session_state.fetched_receptor_paths = temp_receptor_paths
+                    st.session_state.fetched_config_paths = temp_config_paths
+
+                    if temp_receptor_paths:
+                        st.success(f"✅ Processed and paired {len(temp_receptor_paths)} receptor/config file(s).")
+                    if unpaired_receptors:
+                        st.warning("The following receptors were ignored (missing a matching config file):")
+                        for name in unpaired_receptors:
+                            st.caption(f"- {name}")
+                    if not temp_receptor_paths and uploaded_receptors:
+                         st.error("No valid receptor-config pairs were found in the uploaded files.")
+
+
+        # --- This display area now works for all methods ---
         if st.session_state.get('fetched_receptor_paths'):
             exp = st.expander(f"**{len(st.session_state.fetched_receptor_paths)} Receptor(s) Ready**", expanded=False)
             for p_str in st.session_state.fetched_receptor_paths:
