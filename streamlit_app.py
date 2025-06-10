@@ -412,7 +412,6 @@ def display_ensemble_docking_procedure():
         current_receptors_for_run = st.session_state.get('fetched_receptor_paths', [])
         current_configs_for_run = st.session_state.get('fetched_config_paths', [])
 
-        # --- MODIFIED: Pre-run checks simplified and made mandatory for Perl script ---
         if not vina_ready:
             st.error("Vina executable not set up. Cannot start docking.")
         elif not vina_screening_pl_ok or not VINA_SCREENING_PL_LOCAL_PATH.exists() or not os.access(VINA_SCREENING_PL_LOCAL_PATH, os.X_OK):
@@ -424,7 +423,6 @@ def display_ensemble_docking_procedure():
         elif not current_configs_for_run:
             st.warning("No Vina configs available for docking. Please fetch/upload configs.")
         else:
-            # --- MODIFIED: Logic now ONLY uses the Perl script path ---
             st.info(f"Starting docking for {len(final_ligand_details_list_for_run)} ligand(s) vs {len(current_receptors_for_run)} receptor(s).")
             st.session_state.docking_run_outputs = []
             DOCKING_OUTPUT_DIR_LOCAL.mkdir(parents=True, exist_ok=True)
@@ -435,8 +433,7 @@ def display_ensemble_docking_procedure():
                     f_list.write(str(Path(lig_detail['pdbqt_path']).resolve()) + "\n")
             
             overall_docking_progress = st.progress(0)
-            receptors_processed_count = 0
-            skipped_receptor_count = 0
+            receptors_processed_count, skipped_receptor_count = 0, 0
             
             for i_rec, receptor_path_str in enumerate(current_receptors_for_run):
                 receptor_file = Path(receptor_path_str)
@@ -463,9 +460,7 @@ def display_ensemble_docking_procedure():
                     path_to_ligand_list_for_perl_stdin = str(ligand_list_file_for_perl.resolve()) + "\n"
                     proc = subprocess.run(cmd_perl,
                                           input=path_to_ligand_list_for_perl_stdin,
-                                          capture_output=True,
-                                          text=True,
-                                          check=False,
+                                          capture_output=True, text=True, check=False,
                                           cwd=str(WORKSPACE_PARENT_DIR.resolve()))
                     
                     if proc.stdout.strip():
@@ -496,10 +491,8 @@ def display_ensemble_docking_procedure():
                             
                             if score is not None:
                                 st.session_state.docking_run_outputs.append({
-                                    "ligand_id": lig_detail["id"],
-                                    "ligand_base_name": lig_detail["base_name"],
-                                    "protein_stem": protein_base,
-                                    "config_stem": config_to_use.stem,
+                                    "ligand_id": lig_detail["id"], "ligand_base_name": lig_detail["base_name"],
+                                    "protein_stem": protein_base, "config_stem": config_to_use.stem,
                                     "score": score
                                 })
                             else:
@@ -552,12 +545,13 @@ def display_ensemble_docking_procedure():
                         
                         scores_for_hybrid_cleaned = scores_for_hybrid.dropna(subset=score_columns)
                         num_score_cols_found = len(score_columns)
-        
-                        if num_score_cols_found == 15:
+                        
+                        # --- MODIFIED: Check for 8 or 15 score columns ---
+                        if num_score_cols_found in [8, 15]:
                             st.session_state.docking_scores_for_hybrid = scores_for_hybrid_cleaned
-                            st.success(f"15 docking scores per ligand (for {len(scores_for_hybrid_cleaned)} ligands with complete scores) saved for Hybrid GNN prediction.")
+                            st.success(f"{num_score_cols_found} docking scores per ligand (for {len(scores_for_hybrid_cleaned)} ligands with complete scores) saved for Hybrid GNN prediction.")
                         elif num_score_cols_found > 0:
-                            st.warning(f"Found {num_score_cols_found} docking score columns, but Hybrid GNN model expects 15.")
+                            st.warning(f"Found {num_score_cols_found} docking score columns, but the Hybrid GNN model expects 8 or 15. Input will not be available for the hybrid model.")
                             if 'docking_scores_for_hybrid' in st.session_state:
                                 del st.session_state.docking_scores_for_hybrid
                         else:
@@ -577,7 +571,7 @@ def display_prediction_model_procedure():
 
     model_type = st.radio(
         "Select Prediction Model Type:",
-        ("Original GNN Model", "Hybrid GNN Model (Requires 15 Docking Scores)"),
+        ("Original GNN Model", "Hybrid GNN Model (Requires 8 or 15 Docking Scores)"),
         key="prediction_model_type_selector",
         horizontal=True
     )
@@ -664,7 +658,7 @@ def display_prediction_model_procedure():
                 else:
                     st.info("Original GNN pIC50 prediction yielded no data or an error occurred.")
         
-        elif selected_model_for_prediction == "Hybrid GNN Model (Requires 15 Docking Scores)":
+        elif "Hybrid GNN Model" in selected_model_for_prediction:
             st.subheader("📈 Hybrid GNN-based pIC50 Prediction")
             if not st.session_state.pred_std_smiles_list:
                 st.warning("No standardized SMILES input for Hybrid GNN prediction.")
@@ -673,7 +667,7 @@ def display_prediction_model_procedure():
             docking_scores_data = st.session_state.get('docking_scores_for_hybrid')
             if docking_scores_data is None or docking_scores_data.empty:
                 st.error("Docking scores from 'Ensemble Docking' procedure are not available or empty. Cannot run Hybrid GNN. "
-                         "Please run Ensemble Docking first for the relevant SMILES and ensure 15 numeric scores are generated and stored.")
+                         "Please run Ensemble Docking first for the relevant SMILES.")
                 return
 
             input_smiles_df_for_merge = pd.DataFrame({'SMILES': st.session_state.pred_std_smiles_list})
@@ -681,14 +675,15 @@ def display_prediction_model_procedure():
 
             if merged_data_for_hybrid.empty:
                 st.error("None of the current input SMILES have corresponding docking scores from the 'Ensemble Docking' results. "
-                         "Please ensure SMILES match and docking was run for them, producing 15 scores.")
+                         "Please ensure SMILES match and docking was run for them.")
                 return
             
             aligned_smiles_for_gnn_part = merged_data_for_hybrid['SMILES'].tolist()
             score_cols_for_hybrid_input = [col for col in merged_data_for_hybrid.columns if col.endswith("Score (kcal/mol)")]
-
-            if len(score_cols_for_hybrid_input) != 15:
-                st.error(f"Aligned data has {len(score_cols_for_hybrid_input)} docking score columns, but Hybrid GNN expects 15. Columns found: {score_cols_for_hybrid_input}")
+            
+            # --- MODIFIED: Check for 8 or 15 score columns ---
+            if len(score_cols_for_hybrid_input) not in [8, 15]:
+                st.error(f"Aligned data has {len(score_cols_for_hybrid_input)} docking score columns, but the Hybrid GNN model expects 8 or 15.")
                 return
             
             aligned_docking_scores_df_for_mlp = merged_data_for_hybrid[score_cols_for_hybrid_input]
@@ -697,7 +692,7 @@ def display_prediction_model_procedure():
                 aligned_docking_scores_df_for_mlp[col] = pd.to_numeric(aligned_docking_scores_df_for_mlp[col], errors='coerce')
             
             if aligned_docking_scores_df_for_mlp.isnull().any().any():
-                st.error("Some docking scores for the selected SMILES are still not valid numbers (NaN) after alignment. Hybrid GNN cannot proceed.")
+                st.error("Some docking scores for the selected SMILES are not valid numbers (NaN) after alignment. Hybrid GNN cannot proceed.")
                 st.dataframe(aligned_docking_scores_df_for_mlp[aligned_docking_scores_df_for_mlp.isnull().any(axis=1)])
                 return
 
@@ -714,7 +709,7 @@ def display_prediction_model_procedure():
 
 def display_about_page():
     st.header("About This Application")
-    st.markdown(f"**Ensemble AutoDock Vina App - v{APP_VERSION}**")
+    st.markdown(f"**Ensemble Docking AutoDock Vina 1.2.5 - v{APP_VERSION}**")
     st.markdown("""
     This application facilitates molecular docking simulations using AutoDock Vina and provides tools for chemical feature analysis and pIC50 prediction.
     
@@ -723,14 +718,13 @@ def display_about_page():
         - Preparation of ligands from SMILES strings (with RDKit standardization) or various file formats.
         - Docking against one or multiple receptor structures.
         - Utilization of specific or multiple Vina configuration files.
-        - Options for using a Perl-based screening script or direct Vina calls.
         - Summarization of best docking scores per ligand. These scores can be used by the Hybrid GNN model.
     - **Prediction Model Insights:**
         - Choice of prediction model: Original GNN or Hybrid GNN.
         - Standardization of input SMILES.
         - Calculation of 2D Mordred descriptors and ECFP4 fingerprints.
-        - PCA visualization of input SMILES' Mordred descriptors against a reference BACE dataset.
-        - pIC50 prediction using selected GNN model. The Hybrid GNN model utilizes graph features from SMILES and 15 pre-calculated docking scores.
+        - PCA visualization of input SMILES' Mordred descriptors against a reference BACE-1 dataset.
+        - pIC50 prediction using selected GNN model. The Hybrid GNN model utilizes graph features from SMILES and 8/15 pre-calculated docking scores.
 
     **File Structure Expectation (Example):**
     - `your_project_root/`
