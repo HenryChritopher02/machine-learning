@@ -100,36 +100,57 @@ def display_ensemble_docking_procedure():
         elif receptor_fetch_method == "Specify from GitHub":
             st.caption("Config files (.txt) with the same name as receptors will be fetched automatically.")
             receptor_dir_in_repo = f"{GH_ENSEMBLE_DOCKING_ROOT_PATH}/{RECEPTOR_SUBDIR_GH.strip('/')}"
-            receptor_names_input = st.text_area(
-                "Receptor Filenames (one per line; for example: 4zpe, 6ej3,...):",
-                key="receptor_filenames_manual_dockpage",
-                height=100,
-                help=f"Enter names like '3duy', not '3duy.pdbqt'. Fetches from .../{receptor_dir_in_repo}/"
-            )
-            if st.button("Fetch Specified Receptors & Configs", key="fetch_specified_receptors_dockpage"):
-                if receptor_names_input.strip():
-                    receptor_base_names = [n.strip() for n in receptor_names_input.splitlines() if n.strip()]
-                    st.session_state.fetched_receptor_paths, st.session_state.fetched_config_paths = [], []
-                    temp_receptor_paths, temp_config_paths = [], []
-                    with st.spinner(f"Downloading {len(receptor_base_names)} specified receptor(s) and config(s)..."):
-                        for base_name in receptor_base_names:
-                            r_name = base_name + ".pdbqt"
-                            r_path = download_file_from_github(BASE_GITHUB_URL_FOR_DATA, f"{RECEPTOR_SUBDIR_GH.strip('/')}/{r_name}", r_name, RECEPTOR_DIR_LOCAL)
-                            if r_path:
-                                temp_receptor_paths.append(r_path)
-                                c_name = base_name + ".txt"
-                                c_path = download_file_from_github(BASE_GITHUB_URL_FOR_DATA, f"{CONFIG_SUBDIR_GH.strip('/')}/{c_name}", c_name, CONFIG_DIR_LOCAL)
-                                if c_path:
-                                    temp_config_paths.append(c_path)
-                    if temp_receptor_paths:
-                        st.session_state.fetched_receptor_paths = temp_receptor_paths
-                        st.session_state.fetched_config_paths = temp_config_paths
-                        st.success(f"✅ Fetched {len(st.session_state.fetched_receptor_paths)} receptors and {len(st.session_state.fetched_config_paths)} configs.")
+            
+            # Initialize session state for available receptor filenames
+            if 'available_receptor_filenames' not in st.session_state:
+                st.session_state.available_receptor_filenames = []
+
+            # Button to list available receptors
+            if st.button("List Available Receptors from GitHub"):
+                with st.spinner("Fetching receptor list..."):
+                    try:
+                        receptor_filenames = list_files_from_github_repo_dir(GH_OWNER, GH_REPO, receptor_dir_in_repo, GH_BRANCH, GH_API_BASE_URL, ".pdbqt")
+                        if receptor_filenames:
+                            st.session_state.available_receptor_filenames = [Path(f).stem for f in receptor_filenames]
+                            st.success(f"Found {len(st.session_state.available_receptor_filenames)} available receptors.")
+                        else:
+                            st.warning("No .pdbqt files found in the GitHub repository.")
+                            st.session_state.available_receptor_filenames = []
+                    except Exception as e:
+                        st.error(f"An error occurred while fetching the receptor list: {e}")
+                        st.session_state.available_receptor_filenames = []
+
+            # If available receptors are loaded, show the multiselect widget
+            if st.session_state.available_receptor_filenames:
+                selected_receptor_base_names = st.multiselect(
+                    "Select Receptor Filenames:",
+                    options=st.session_state.available_receptor_filenames,
+                    help="Select one or more receptor filenames from the list."
+                )
+
+                if st.button("Fetch Specified Receptors & Configs", key="fetch_specified_receptors_dockpage"):
+                    if selected_receptor_base_names:
+                        st.session_state.fetched_receptor_paths, st.session_state.fetched_config_paths = [], []
+                        temp_receptor_paths, temp_config_paths = [], []
+                        with st.spinner(f"Downloading {len(selected_receptor_base_names)} specified receptor(s) and config(s)..."):
+                            for base_name in selected_receptor_base_names:
+                                r_name = base_name + ".pdbqt"
+                                r_path = download_file_from_github(BASE_GITHUB_URL_FOR_DATA, f"{RECEPTOR_SUBDIR_GH.strip('/')}/{r_name}", r_name, RECEPTOR_DIR_LOCAL)
+                                if r_path:
+                                    temp_receptor_paths.append(r_path)
+                                    c_name = base_name + ".txt"
+                                    c_path = download_file_from_github(BASE_GITHUB_URL_FOR_DATA, f"{CONFIG_SUBDIR_GH.strip('/')}/{c_name}", c_name, CONFIG_DIR_LOCAL)
+                                    if c_path:
+                                        temp_config_paths.append(c_path)
+                        if temp_receptor_paths:
+                            st.session_state.fetched_receptor_paths = temp_receptor_paths
+                            st.session_state.fetched_config_paths = temp_config_paths
+                            st.success(f"✅ Fetched {len(st.session_state.fetched_receptor_paths)} receptors and {len(st.session_state.fetched_config_paths)} configs.")
+                        else:
+                            st.error("No specified receptors downloaded.")
                     else:
-                        st.error("No specified receptors downloaded.")
-                else:
-                    st.warning("Enter receptor filenames.")
-        
+                        st.warning("Please select at least one receptor from the list.")
+
         elif receptor_fetch_method == "Upload from Computer":
             st.caption("Upload receptor (.pdbqt) and config (.txt) files. Only paired files will be processed.")
             uploaded_receptors = st.file_uploader("Upload Receptor(s) (.pdbqt)", type="pdbqt", accept_multiple_files=True, key="receptor_uploader_local")
@@ -171,7 +192,7 @@ def display_ensemble_docking_procedure():
                         for name in unpaired_receptors:
                             st.caption(f"- {name}")
                     if not temp_receptor_paths and uploaded_receptors:
-                         st.error("No valid receptor-config pairs were found in the uploaded files.")
+                        st.error("No valid receptor-config pairs were found in the uploaded files.")
 
         if st.session_state.get('fetched_receptor_paths'):
             exp = st.expander(f"**{len(st.session_state.fetched_receptor_paths)} Receptor(s) Ready**", expanded=False)
@@ -537,7 +558,7 @@ def display_ensemble_docking_procedure():
                         st.dataframe(df_summary)
                         csv_summary = convert_df_to_csv(df_summary)
                         st.download_button("Download Summary (CSV)", csv_summary, "docking_summary_per_ligand.csv", "text/csv", key="dl_summary_per_ligand_csv")
-        
+
                         score_columns = [col for col in df_summary.columns if col.endswith("Score (kcal/mol)")]
                         scores_for_hybrid = df_summary[['SMILES'] + score_columns].copy()
                         for col in score_columns:
@@ -749,9 +770,9 @@ def display_about_page():
         - `packages.txt` (for Streamlit Cloud system dependencies)
     """)
     st.markdown(f"**Key Local Paths Used (resolved from `APP_ROOT` = `{APP_ROOT.resolve()}`):**\n"
-                  f"- Workspace Parent: `{WORKSPACE_PARENT_DIR.resolve()}`\n"
-                  f"- Vina Executable: `{VINA_PATH_LOCAL.resolve()}`\n"
-                  f"- Direct Vina Output PDBQTs: `{DOCKING_OUTPUT_DIR_LOCAL.resolve()}`")
+                f"- Workspace Parent: `{WORKSPACE_PARENT_DIR.resolve()}`\n"
+                f"- Vina Executable: `{VINA_PATH_LOCAL.resolve()}`\n"
+                f"- Direct Vina Output PDBQTs: `{DOCKING_OUTPUT_DIR_LOCAL.resolve()}`")
 
 def main():
     st.set_page_config(layout="wide", page_title=f"Molecular Modeling Suite v{APP_VERSION}")
