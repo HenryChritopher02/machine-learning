@@ -101,7 +101,7 @@ def display_ensemble_docking_procedure():
             st.caption("Config files (.txt) with the same name as receptors will be fetched automatically.")
             receptor_dir_in_repo = f"{GH_ENSEMBLE_DOCKING_ROOT_PATH}/{RECEPTOR_SUBDIR_GH.strip('/')}"
             receptor_names_input = st.text_area(
-                "Receptor Filenames (one per line, without extension):",
+                "Receptor Filenames (one per line; for example: 4zpe, 6ej3,...):",
                 key="receptor_filenames_manual_dockpage",
                 height=100,
                 help=f"Enter names like '3duy', not '3duy.pdbqt'. Fetches from .../{receptor_dir_in_repo}/"
