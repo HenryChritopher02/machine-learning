@@ -61,7 +61,7 @@ def load_and_prepare_train_data_desc():
         df_train_raw = pd.read_csv(BACE_TRAIN_DATA_URL)
         st.success("Successfully loaded PCA training data.")
         # User-specified columns to drop for PCA training data preparation
-        cols_to_drop = ['mol', 'CID', 'Class', 'Model', 'standardized_smiles', 'pIC50']
+        cols_to_drop = ['mol', 'CID', 'Class', 'standardized_smiles', 'pIC50']
         # Filter out columns that might not exist to prevent errors
         cols_to_drop_existing = [col for col in cols_to_drop if col in df_train_raw.columns]
         train_descriptors_df = df_train_raw.drop(columns=cols_to_drop_existing).copy()
