@@ -747,32 +747,32 @@ def display_about_page():
         - PCA visualization of input SMILES' Mordred descriptors against a reference BACE-1 dataset.
         - pIC50 prediction using selected GNN model. The Hybrid GNN model utilizes graph features from SMILES and 8/15 pre-calculated docking scores.
 
-    **File Structure Expectation (Example):**
-    - `your_project_root/`
-        - `streamlit_app.py` (this file)
-        - `utils/`
-            - `__init__.py`
-            - `paths.py` (stores path constants)
-            - `app_utils.py` (utility functions for docking)
-            - `prediction_utils.py` (utility functions for prediction/feature analysis)
-            - `gnn/`
-                - `__init__.py`
-                - `gnn_architecture.py` (GIN, GIN_hybrid, MLP1, CombinedMLP classes)
-                - `gnn_train.py` (load_model, predict_pic50_gnn, predict_pic50_hybrid functions)
-        - `ensemble_docking/`
-            - `ligand_preprocessing/scrub.py`
-            - `ligand_preprocessing/mk_prepare_ligand.py`
-            - `Vina_screening.pl`
-        - `vina/vina_1.2.5_linux_x86_64` (Vina executable, `chmod +x`)
-        - `autodock_workspace/` (created for temporary files, fetched assets, downloaded models)
-        - `autodock_outputs/` (created for PDBQT outputs from direct Vina calls)
-        - `requirements.txt`
-        - `packages.txt` (for Streamlit Cloud system dependencies)
-    """)
-    st.markdown(f"**Key Local Paths Used (resolved from `APP_ROOT` = `{APP_ROOT.resolve()}`):**\n"
-                f"- Workspace Parent: `{WORKSPACE_PARENT_DIR.resolve()}`\n"
-                f"- Vina Executable: `{VINA_PATH_LOCAL.resolve()}`\n"
-                f"- Direct Vina Output PDBQTs: `{DOCKING_OUTPUT_DIR_LOCAL.resolve()}`")
+    # **File Structure Expectation (Example):**
+    # - `your_project_root/`
+    #     - `streamlit_app.py` (this file)
+    #     - `utils/`
+    #         - `__init__.py`
+    #         - `paths.py` (stores path constants)
+    #         - `app_utils.py` (utility functions for docking)
+    #         - `prediction_utils.py` (utility functions for prediction/feature analysis)
+    #         - `gnn/`
+    #             - `__init__.py`
+    #             - `gnn_architecture.py` (GIN, GIN_hybrid, MLP1, CombinedMLP classes)
+    #             - `gnn_train.py` (load_model, predict_pic50_gnn, predict_pic50_hybrid functions)
+    #     - `ensemble_docking/`
+    #         - `ligand_preprocessing/scrub.py`
+    #         - `ligand_preprocessing/mk_prepare_ligand.py`
+    #         - `Vina_screening.pl`
+    #     - `vina/vina_1.2.5_linux_x86_64` (Vina executable, `chmod +x`)
+    #     - `autodock_workspace/` (created for temporary files, fetched assets, downloaded models)
+    #     - `autodock_outputs/` (created for PDBQT outputs from direct Vina calls)
+    #     - `requirements.txt`
+    #     - `packages.txt` (for Streamlit Cloud system dependencies)
+    # """)
+    # st.markdown(f"**Key Local Paths Used (resolved from `APP_ROOT` = `{APP_ROOT.resolve()}`):**\n"
+    #             f"- Workspace Parent: `{WORKSPACE_PARENT_DIR.resolve()}`\n"
+    #             f"- Vina Executable: `{VINA_PATH_LOCAL.resolve()}`\n"
+    #             f"- Direct Vina Output PDBQTs: `{DOCKING_OUTPUT_DIR_LOCAL.resolve()}`")
 
 def main():
     st.set_page_config(layout="wide", page_title=f"Molecular Modeling Suite v{APP_VERSION}")
