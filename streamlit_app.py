@@ -587,7 +587,7 @@ def display_ensemble_docking_procedure():
 
 
 def display_prediction_model_procedure():
-    st.header(f"🧪 Prediction Model (v{APP_VERSION})")
+    st.header(f"🧪 AI Model for predicting BACE1 inhibitor (v{APP_VERSION})")
     st.markdown("---")
 
     model_type = st.radio(
